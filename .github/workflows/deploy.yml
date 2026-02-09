@@ -25,7 +25,7 @@ jobs:
       - name: 🏗️ Build Project
         run: |
           npm run build
-          echo "Build ID: ${{ github.run_id }} - $(date)" > dist/deploy_debug.txt
+          echo "Build ID: ${{ github.run_id }} - Root Fix - $(date)" > dist/deploy_debug.txt
           echo "📂 Listing build directory contents:"
           ls -R dist/
 
@@ -38,4 +38,4 @@ jobs:
           local-dir: ./dist/
           server-dir: ./domains/lightcoral-cod-859891.hostingersite.com/public_html/
           log-level: verbose
-          state-name: .ftp-deploy-sync-state-final-fix.json
+          state-name: .ftp-deploy-sync-state-root-fix.json
