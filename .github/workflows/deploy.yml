@@ -25,6 +25,7 @@ jobs:
       - name: 🏗️ Build Project
         run: |
           npm run build
+          echo "Build ID: ${{ github.run_id }} - $(date)" > dist/deploy_debug.txt
           echo "📂 Listing build directory contents:"
           ls -R dist/
 
@@ -35,5 +36,5 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist/
-          server-dir: ./public_html/
+          server-dir: ./
           log-level: verbose
