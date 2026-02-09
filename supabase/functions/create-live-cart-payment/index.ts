@@ -188,7 +188,7 @@ Deno.serve(async (req) => {
     // Build payer object with complete identification for anti-fraud
     const payerObj: Record<string, unknown> = {
       name: resolvedName,
-      email: resolvedEmail || undefined,
+      email: resolvedEmail || "cliente@naoinformado.com", // MP requires email for some payment methods
       phone: resolvedPhone ? { area_code: resolvedPhone.substring(0, 2), number: resolvedPhone.substring(2) } : undefined,
     };
 
@@ -222,7 +222,8 @@ Deno.serve(async (req) => {
     }
 
     const baseUrl = SUPABASE_URL.replace("/rest/v1", "");
-    const siteUrl = "https://seuprovador.lovable.app";
+    const origin = req.headers.get("origin") || req.headers.get("referer");
+    const siteUrl = origin ? origin.replace(/\/$/, "") : "https://seuprovador.lovable.app";
 
     const preferencePayload: Record<string, unknown> = {
       items: mpItems,

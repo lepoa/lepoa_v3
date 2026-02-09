@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
 
     // === CRITICAL: Calculate values with precision ===
     // 1. Calculate products subtotal from items
-    const productsSubtotal = items.reduce((sum: number, item: OrderItem) => 
+    const productsSubtotal = items.reduce((sum: number, item: OrderItem) =>
       sum + (Number(item.product_price) * item.quantity), 0
     );
 
@@ -194,12 +194,12 @@ Deno.serve(async (req) => {
 
     // Add shipping as separate item if applicable
     if (shippingFee > 0) {
-      const shippingName = order.delivery_method === "motoboy" 
-        ? "Frete Motoboy (Anápolis)" 
+      const shippingName = order.delivery_method === "motoboy"
+        ? "Frete Motoboy (Anápolis)"
         : order.delivery_method === "pickup"
-        ? "Retirada na Loja"
-        : `Frete ${order.shipping_service || "Correios"}`;
-      
+          ? "Retirada na Loja"
+          : `Frete ${order.shipping_service || "Correios"}`;
+
       mpItems.push({
         id: "shipping",
         title: shippingName,
@@ -212,7 +212,7 @@ Deno.serve(async (req) => {
     // Verify total of MP items matches our calculation
     const mpTotal = mpItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.quantity), 0);
     console.log("MP items total:", mpTotal);
-    
+
     if (Math.abs(mpTotal - calculatedTotal) > tolerance) {
       console.error("MP ITEMS TOTAL MISMATCH!", {
         mpTotal,
@@ -223,7 +223,8 @@ Deno.serve(async (req) => {
 
     // Get the base URL for webhooks and redirects
     const baseUrl = Deno.env.get("SUPABASE_URL")?.replace("/rest/v1", "") || "";
-    const siteUrl = "https://seuprovador.lovable.app";
+    const origin = req.headers.get("origin") || req.headers.get("referer");
+    const siteUrl = origin ? origin.replace(/\/$/, "") : "https://seuprovador.lovable.app";
 
     // Build preference payload
     const preferencePayload = {
@@ -269,7 +270,7 @@ Deno.serve(async (req) => {
     } catch (networkError) {
       console.error("MP Network Error:", networkError);
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error_code: "MP_NETWORK_ERROR",
           error: "Falha de conexão com Mercado Pago. Tente novamente.",
           details: networkError instanceof Error ? networkError.message : "Network error"
@@ -282,15 +283,15 @@ Deno.serve(async (req) => {
     const contentType = mpResponse.headers.get("content-type");
     if (!contentType?.includes("application/json")) {
       const textResponse = await mpResponse.text();
-      console.error("MP returned non-JSON response:", { 
-        contentType, 
+      console.error("MP returned non-JSON response:", {
+        contentType,
         status: mpResponse.status,
-        preview: textResponse.substring(0, 500) 
+        preview: textResponse.substring(0, 500)
       });
-      
+
       if (textResponse.trim().startsWith("<!") || textResponse.includes("<html")) {
         return new Response(
-          JSON.stringify({ 
+          JSON.stringify({
             error_code: "MP_HTML_RESPONSE",
             error: "Mercado Pago retornou página de erro. Verifique a configuração.",
             details: `Status: ${mpResponse.status}, got HTML instead of JSON`
@@ -298,9 +299,9 @@ Deno.serve(async (req) => {
           { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
+
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error_code: "MP_INVALID_RESPONSE",
           error: "Resposta inválida do Mercado Pago",
           details: `Content-Type: ${contentType}, Status: ${mpResponse.status}`
@@ -315,7 +316,7 @@ Deno.serve(async (req) => {
     } catch (parseError) {
       console.error("MP JSON Parse Error:", parseError);
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error_code: "MP_PARSE_ERROR",
           error: "Erro ao processar resposta do Mercado Pago",
           details: "Malformed JSON response"
@@ -326,23 +327,23 @@ Deno.serve(async (req) => {
 
     if (!mpResponse.ok) {
       console.error("MP API Error:", JSON.stringify(mpData));
-      
+
       const mpMessage = mpData.message || mpData.error || "Erro desconhecido";
       const mpCause = mpData.cause?.[0]?.description || "";
-      
+
       if (mpResponse.status === 429) {
         return new Response(
-          JSON.stringify({ 
+          JSON.stringify({
             error_code: "MP_RATE_LIMITED",
             error: "Muitas requisições ao Mercado Pago. Aguarde 30 segundos.",
           }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
+
       if (mpResponse.status === 401) {
         return new Response(
-          JSON.stringify({ 
+          JSON.stringify({
             error_code: "MP_AUTH_ERROR",
             error: "Token do Mercado Pago inválido ou expirado",
             details: "Verifique a configuração do MERCADOPAGO_ACCESS_TOKEN"
@@ -350,11 +351,11 @@ Deno.serve(async (req) => {
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
+
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error_code: "MP_API_ERROR",
-          error: `Erro Mercado Pago: ${mpMessage}`, 
+          error: `Erro Mercado Pago: ${mpMessage}`,
           details: mpCause || mpData
         }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
