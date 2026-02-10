@@ -19,6 +19,7 @@ interface Order {
   customer_name: string;
   tracking_code: string | null;
   items_count?: number;
+  type?: 'regular' | 'live'; // Distinguish order source
 }
 
 export default function MeusPedidos() {
@@ -42,26 +43,62 @@ export default function MeusPedidos() {
   const loadOrders = async () => {
     if (!user) return;
 
-    const { data, error } = await supabase
-      .from("orders")
-      .select("id, created_at, status, total, customer_name, tracking_code")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+    try {
+      // 1. Fetch regular orders
+      const { data: regularOrders, error: regularError } = await supabase
+        .from("orders")
+        .select("id, created_at, status, total, customer_name, tracking_code")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
 
-    if (!error && data) {
-      // Get item counts
-      const ordersWithCounts = await Promise.all(
-        data.map(async (order) => {
+      if (regularError) throw regularError;
+
+      // 2. Fetch live shop orders (live_carts linked to user)
+      const { data: liveOrders, error: liveError } = await supabase
+        .from("live_carts")
+        .select("id, created_at, status, total, tracking_code, items:live_cart_items(id)")
+        .eq("user_id", user.id)
+        .in("status", ["pago", "enviado", "entregue", "aguardando_pagamento", "separacao"]) // filter relevant statuses
+        .order("created_at", { ascending: false });
+
+      if (liveError && liveError.code !== "PGRST100") { // ignore if column doesn't exist yet (graceful degradation)
+        console.error("Error fetching live orders:", liveError);
+      }
+
+      // 3. Process regular orders
+      const processedRegularOrders = await Promise.all(
+        (regularOrders || []).map(async (order) => {
           const { count } = await supabase
             .from("order_items")
             .select("*", { count: "exact", head: true })
             .eq("order_id", order.id);
-          return { ...order, items_count: count || 0 };
+          return { ...order, items_count: count || 0, type: 'regular' as const };
         })
       );
-      setOrders(ordersWithCounts);
+
+      // 4. Process live orders
+      const processedLiveOrders: Order[] = (liveOrders || []).map(order => ({
+        id: order.id,
+        created_at: order.created_at,
+        status: order.status,
+        total: order.total,
+        customer_name: user?.user_metadata?.name || "Cliente",
+        tracking_code: order.tracking_code,
+        items_count: order.items?.length || 0,
+        type: 'live' as const
+      }));
+
+      // 5. Combine and Sort
+      const allOrders = [...processedRegularOrders, ...processedLiveOrders].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      setOrders(allOrders);
+    } catch (error) {
+      console.error("Error loading orders:", error);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const formatDate = (dateStr: string) => {
@@ -98,7 +135,7 @@ export default function MeusPedidos() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container mx-auto px-4 py-8 max-w-2xl">
         <h1 className="font-serif text-2xl mb-6">Meus Pedidos</h1>
 
@@ -150,9 +187,9 @@ export default function MeusPedidos() {
                         </div>
                       </Link>
                       <div className="flex items-center gap-2">
-                        <WhatsAppButton 
-                          href={whatsAppUrl} 
-                          variant="circle" 
+                        <WhatsAppButton
+                          href={whatsAppUrl}
+                          variant="circle"
                         />
                         <Link to={`/meus-pedidos/${order.id}`}>
                           <ChevronRight className="h-5 w-5 text-muted-foreground" />
