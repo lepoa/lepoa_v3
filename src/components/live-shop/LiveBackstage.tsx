@@ -113,14 +113,14 @@ export function LiveBackstage() {
   const navigate = useNavigate();
   const { event, products, kpis, isLoading: eventLoading, fetchEvent } = useLiveEvent(eventId);
   const { updateEventStatus } = useLiveEvents();
-  
+
   // State for pausing refetch during raffle overlay
   const [isRaffleOverlayActive, setIsRaffleOverlayActive] = useState(false);
-  
-  const { 
-    customers, 
-    carts, 
-    waitlist, 
+
+  const {
+    customers,
+    carts,
+    waitlist,
     isLoading: backstageLoading,
     quickLaunch,
     removeCartItem,
@@ -155,8 +155,8 @@ export function LiveBackstage() {
   const [whoGotItModal, setWhoGotItModal] = useState(false);
   const [addProductsModal, setAddProductsModal] = useState(false);
   const [cartDetailModal, setCartDetailModal] = useState<LiveCart | null>(null);
-  const [waitlistModal, setWaitlistModal] = useState<{ 
-    productId: string; 
+  const [waitlistModal, setWaitlistModal] = useState<{
+    productId: string;
     productName: string;
     productColor?: string;
     size: string;
@@ -174,16 +174,16 @@ export function LiveBackstage() {
   const [waitlistTabOpen, setWaitlistTabOpen] = useState(false);
   const [editProductModal, setEditProductModal] = useState<LiveProduct | null>(null);
   const [raffleDrawer, setRaffleDrawer] = useState(false);
-  
+
   // Mobile tab state
   const [mobileTab, setMobileTab] = useState<"produtos" | "lancador" | "carrinhos" | "fila">("lancador");
 
   // Payment loading state
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null);
-  
+
   // Quick launch loading state - prevents double-clicks
   const [isQuickLaunching, setIsQuickLaunching] = useState(false);
-  
+
   // Manual status change state
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
@@ -204,18 +204,18 @@ export function LiveBackstage() {
   const liveMetrics = useMemo(() => {
     // Filter active carts (not cancelled)
     const activeCarts = carts.filter(c => c.status !== 'cancelado');
-    
+
     // Count unique customers with at least 1 active product item
     const customersWithProducts = new Set<string>();
-    
+
     // Calculate total items and value from active cart items (PRODUCTS ONLY)
     let totalItems = 0;
     let totalValue = 0;
-    
+
     activeCarts.forEach(cart => {
       const items = cart.items || [];
       let hasActiveProducts = false;
-      
+
       items.forEach(item => {
         // Only count active items (reservado, confirmado) - exclude cancelled, removed, etc.
         // live_cart_items are always products (gifts come from order_gifts table)
@@ -225,13 +225,13 @@ export function LiveBackstage() {
           hasActiveProducts = true;
         }
       });
-      
+
       // Only count customer if they have at least 1 active product
       if (hasActiveProducts) {
         customersWithProducts.add(cart.live_customer_id);
       }
     });
-    
+
     return { totalItems, totalCustomers: customersWithProducts.size, totalValue };
   }, [carts]);
 
@@ -240,19 +240,19 @@ export function LiveBackstage() {
   // DO NOT subtract reservedStock from available - it would be double-counting!
   useEffect(() => {
     const stockMap: Record<string, Record<string, number>> = {};
-    
+
     carts.forEach(cart => {
       (cart.items || []).forEach(item => {
         if (['reservado', 'confirmado'].includes(item.status)) {
           const productId = item.product_id;
           const size = (item.variante as any)?.tamanho || '';
-          
+
           if (!stockMap[productId]) stockMap[productId] = {};
           stockMap[productId][size] = (stockMap[productId][size] || 0) + item.qtd;
         }
       });
     });
-    
+
     setReservedStock(stockMap);
   }, [carts]);
 
@@ -347,7 +347,7 @@ export function LiveBackstage() {
     observacao?: string;
   }) => {
     if (!waitlistModal) return false;
-    
+
     const success = await addToWaitlist(
       waitlistModal.productId,
       { cor: waitlistModal.productColor, tamanho: waitlistModal.size },
@@ -386,8 +386,8 @@ export function LiveBackstage() {
 
   // Get waitlist entries for a specific product/size
   const getWaitlistEntries = (productId: string, size: string) => {
-    return waitlist.filter(w => 
-      w.product_id === productId && 
+    return waitlist.filter(w =>
+      w.product_id === productId &&
       (w.variante as any)?.tamanho === size
     );
   };
@@ -399,11 +399,11 @@ export function LiveBackstage() {
 
   const handleGeneratePayment = async (cartId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    
+
     setPaymentLoading(cartId);
     const result = await generatePaymentLink(cartId);
     setPaymentLoading(null);
-    
+
     if (result.success && result.checkoutUrl) {
       // Open payment link in new tab
       window.open(result.checkoutUrl, '_blank');
@@ -418,23 +418,23 @@ export function LiveBackstage() {
     const product = p.product;
     if (!product) return false;
     return product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-           product.sku?.toLowerCase().includes(productSearch.toLowerCase());
+      product.sku?.toLowerCase().includes(productSearch.toLowerCase());
   });
 
   // Filter carts
   const filteredCarts = carts.filter(c => {
     // Apply search filter
-    const matchesSearch = !cartSearch || 
+    const matchesSearch = !cartSearch ||
       c.live_customer?.instagram_handle.toLowerCase().includes(cartSearch.toLowerCase()) ||
       c.live_customer?.nome?.toLowerCase().includes(cartSearch.toLowerCase());
-    
+
     // Apply customer type filter
     const isRegistered = !!c.live_customer?.client_id;
-    const matchesCustomerFilter = 
+    const matchesCustomerFilter =
       customerFilter === "all" ||
       (customerFilter === "registered" && isRegistered) ||
       (customerFilter === "new" && !isRegistered);
-    
+
     return matchesSearch && matchesCustomerFilter;
   });
 
@@ -448,47 +448,47 @@ export function LiveBackstage() {
   const renderProductCard = (lp: LiveProduct) => {
     const product = lp.product;
     if (!product) return null;
-    
+
     // Use stock_by_size for the FULL list of registered sizes (including sold-out)
     // Use available_by_size for actual availability quantities
     const stockBySize = (product as any).stock_by_size || {};
     const availableBySize = (product as any).available_by_size || {};
     const sizes = sortSizes(Object.keys(stockBySize));
-    
+
     // Check if any size is out of stock with waitlist
     const totalWaitlistForProduct = sizes.reduce((sum, size) => {
       return sum + getWaitlistCount(lp.product_id, size);
     }, 0);
 
     // Check if any out-of-stock size has available stock now (released)
-    // FIXED: Use available directly - DO NOT subtract reservedStock (already included in view)
+    // FIXED: Subtract reservedStock if the view doesn't account for it
     const hasReleasedStock = sizes.some(size => {
-      const available = availableBySize[size] || 0;
+      const reserved = (reservedStock[lp.product_id] && reservedStock[lp.product_id][size]) || 0;
+      const available = Math.max(0, (availableBySize[size] || 0) - reserved);
       const waitlistCount = getWaitlistCount(lp.product_id, size);
       return available > 0 && waitlistCount > 0;
     });
 
-    // Calculate total available stock (already filtered to > 0)
-    // FIXED: Use available directly from view - no double subtraction
+    // Calculate total available stock (accounting for reservations)
     const totalAvailable = sizes.reduce((sum, size) => {
-      const available = availableBySize[size] || 0;
-      return sum + Math.max(0, available);
+      const reserved = (reservedStock[lp.product_id] && reservedStock[lp.product_id][size]) || 0;
+      const available = Math.max(0, (availableBySize[size] || 0) - reserved);
+      return sum + available;
     }, 0);
 
     const isFullyOutOfStock = totalAvailable === 0;
 
     return (
-      <div 
+      <div
         key={lp.id}
-        className={`p-3 rounded-lg border transition-colors cursor-pointer ${
-          selectedProductId === lp.product_id 
-            ? 'border-primary bg-primary/5' 
-            : hasReleasedStock
-              ? 'border-amber-300 bg-amber-50/50'
-              : isFullyOutOfStock
-                ? 'opacity-60 hover:opacity-100'
-                : 'hover:bg-muted/50'
-        }`}
+        className={`p-3 rounded-lg border transition-colors cursor-pointer ${selectedProductId === lp.product_id
+          ? 'border-primary bg-primary/5'
+          : hasReleasedStock
+            ? 'border-amber-300 bg-amber-50/50'
+            : isFullyOutOfStock
+              ? 'opacity-60 hover:opacity-100'
+              : 'hover:bg-muted/50'
+          }`}
         onClick={() => {
           setSelectedProductId(lp.product_id);
           setSelectedColor(product.color || "");
@@ -501,8 +501,8 @@ export function LiveBackstage() {
           {/* Thumbnail */}
           <div className="w-10 h-10 sm:w-12 sm:h-12 bg-secondary rounded overflow-hidden shrink-0 relative">
             {product.image_url ? (
-              <img 
-                src={product.image_url} 
+              <img
+                src={product.image_url}
                 alt={product.name}
                 className="w-full h-full object-cover"
               />
@@ -517,7 +517,7 @@ export function LiveBackstage() {
               </div>
             )}
           </div>
-          
+
           {/* Content area - flexible */}
           <div className="flex-1 min-w-0 overflow-hidden">
             <div className="font-medium text-sm leading-tight truncate">{product.name}</div>
@@ -548,7 +548,7 @@ export function LiveBackstage() {
               )}
             </div>
           </div>
-          
+
           {/* Edit button - fixed position */}
           <Button
             variant="ghost"
@@ -566,9 +566,9 @@ export function LiveBackstage() {
         {/* Size chips - using AVAILABLE stock */}
         <div className="flex flex-wrap gap-1.5 mt-2">
           {sizes.map(size => {
-            // FIXED: Use available directly from product_available_stock view
-            // DO NOT subtract reservedStock - the view already includes all reservations
-            const available = availableBySize[size] || 0;
+            // FIXED: Subtract reservedStock because view might not include it (open carts)
+            const reserved = (reservedStock[lp.product_id] && reservedStock[lp.product_id][size]) || 0;
+            const available = Math.max(0, (availableBySize[size] || 0) - reserved);
             const isOutOfStock = available <= 0;
             const waitlistCount = getWaitlistCount(lp.product_id, size);
             const hasWaitlistWithStock = available > 0 && waitlistCount > 0;
@@ -577,15 +577,14 @@ export function LiveBackstage() {
               <Tooltip key={size}>
                 <TooltipTrigger asChild>
                   <button
-                    className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                      hasWaitlistWithStock
-                        ? 'bg-amber-500 text-white animate-pulse'
-                        : isOutOfStock 
-                          ? 'bg-destructive/10 text-destructive line-through' 
-                          : available <= 2
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground'
-                    }`}
+                    className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${hasWaitlistWithStock
+                      ? 'bg-amber-500 text-white animate-pulse'
+                      : isOutOfStock
+                        ? 'bg-destructive/10 text-destructive line-through'
+                        : available <= 2
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground'
+                      }`}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (waitlistCount > 0) {
@@ -597,11 +596,11 @@ export function LiveBackstage() {
                           size
                         });
                       } else if (isOutOfStock) {
-                        setWaitlistModal({ 
-                          productId: lp.product_id, 
+                        setWaitlistModal({
+                          productId: lp.product_id,
                           productName: product.name,
                           productColor: product.color || undefined,
-                          size 
+                          size
                         });
                       } else {
                         setSelectedProductId(lp.product_id);
@@ -618,12 +617,12 @@ export function LiveBackstage() {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {hasWaitlistWithStock 
+                  {hasWaitlistWithStock
                     ? `⚠️ Estoque liberado! ${waitlistCount} na fila`
                     : waitlistCount > 0
                       ? `Esgotado - ${waitlistCount} na lista de espera`
-                      : isOutOfStock 
-                        ? "Esgotado - Clique para lista de espera" 
+                      : isOutOfStock
+                        ? "Esgotado - Clique para lista de espera"
                         : `${available} disponíveis`}
                 </TooltipContent>
               </Tooltip>
@@ -675,8 +674,8 @@ export function LiveBackstage() {
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-secondary rounded overflow-hidden shrink-0">
               {selectedProduct.product.image_url ? (
-                <img 
-                  src={selectedProduct.product.image_url} 
+                <img
+                  src={selectedProduct.product.image_url}
                   alt={selectedProduct.product.name}
                   className="w-full h-full object-cover"
                 />
@@ -721,7 +720,7 @@ export function LiveBackstage() {
               const stockBySize = (selectedProduct.product as any).stock_by_size || {};
               const availableBySize = (selectedProduct.product as any).available_by_size || {};
               const sizes = sortSizes(Object.keys(stockBySize));
-              
+
               // If no sizes registered at all, show message
               if (sizes.length === 0) {
                 return (
@@ -730,11 +729,12 @@ export function LiveBackstage() {
                   </p>
                 );
               }
-              
+
               return sizes.map(size => {
-                // FIXED: Use available directly from product_available_stock view
-                // DO NOT subtract reservedStock - the view already includes all reservations
-                const available = availableBySize[size] || 0;
+                // FIXED: Subtract reservedStock from available because the view might not account for open carts
+                // This aligns frontend display with backend validation logic
+                const reserved = (reservedStock[selectedProduct.product_id] && reservedStock[selectedProduct.product_id][size]) || 0;
+                const available = Math.max(0, (availableBySize[size] || 0) - reserved);
                 const isSelected = selectedSize === size;
                 const isOutOfStock = available <= 0;
                 const waitlistCount = getWaitlistCount(selectedProduct.product_id, size);
@@ -744,15 +744,14 @@ export function LiveBackstage() {
                   <Tooltip key={size}>
                     <TooltipTrigger asChild>
                       <button
-                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                          hasWaitlistWithStock
-                            ? 'bg-amber-500 text-white border-amber-500 animate-pulse'
-                            : isOutOfStock 
-                              ? 'bg-muted text-muted-foreground line-through cursor-pointer hover:bg-destructive/10 hover:text-destructive hover:no-underline' 
-                              : isSelected
-                                ? 'bg-primary text-primary-foreground border-primary'
-                                : 'hover:bg-muted'
-                        }`}
+                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${hasWaitlistWithStock
+                          ? 'bg-amber-500 text-white border-amber-500 animate-pulse'
+                          : isOutOfStock
+                            ? 'bg-muted text-muted-foreground line-through cursor-pointer hover:bg-destructive/10 hover:text-destructive hover:no-underline'
+                            : isSelected
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'hover:bg-muted'
+                          }`}
                         onClick={() => {
                           if (waitlistCount > 0) {
                             // Open waitlist drawer to manage queue
@@ -831,8 +830,8 @@ export function LiveBackstage() {
           <div className="text-2xl font-bold text-primary">
             {formatPrice(
               calculateDiscountedPrice(
-                selectedProduct.product.price, 
-                selectedProduct.live_discount_type, 
+                selectedProduct.product.price,
+                selectedProduct.live_discount_type,
                 selectedProduct.live_discount_value
               ) * quantity
             )}
@@ -880,10 +879,10 @@ export function LiveBackstage() {
     const items = (cart.items || []).filter(i => ['reservado', 'confirmado'].includes(i.status));
     const customerName = cart.live_customer?.nome || cart.live_customer?.instagram_handle || "";
     const checkoutUrl = getLiveCheckoutUrl(cart.id);
-    
+
     let message = `Oi${customerName ? ` ${customerName.split(' ')[0]}` : ''}! 💛\n\n`;
     message += `Separei seus itens da live pra você ✨\n\n`;
-    
+
     items.forEach(item => {
       const size = (item.variante as any)?.tamanho || '';
       const color = (item.variante as any)?.cor || item.product?.color || '';
@@ -892,11 +891,11 @@ export function LiveBackstage() {
       if (color) message += ` (${color})`;
       message += ` - ${formatPrice(item.preco_unitario)}\n`;
     });
-    
+
     message += `\n💰 Total: ${formatPrice(cart.total)}\n\n`;
     message += `Finalize seu pedido por aqui:\n${checkoutUrl}\n\n`;
     message += `Qualquer ajuste me chama aqui 💚`;
-    
+
     return message;
   };
 
@@ -913,7 +912,7 @@ export function LiveBackstage() {
     if (e) e.stopPropagation();
     const phone = cart.live_customer?.whatsapp?.replace(/\D/g, '') || '';
     const message = buildCartWhatsAppMessage(cart);
-    
+
     if (phone) {
       const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
       window.open(whatsappUrl, '_blank');
@@ -930,7 +929,7 @@ export function LiveBackstage() {
     // Include 'expirado' items in count and total (same logic as modal)
     const activeItems = items.filter(i => ['reservado', 'confirmado', 'expirado'].includes(i.status));
     const calculatedTotal = activeItems.reduce((sum, i) => sum + i.preco_unitario * i.qtd, 0);
-    
+
     const statusConfig: Record<string, { label: string; color: string }> = {
       'aberto': { label: 'Aberto', color: 'bg-blue-100 text-blue-700' },
       'em_confirmacao': { label: 'Confirmando', color: 'bg-amber-100 text-amber-700' },
@@ -947,7 +946,7 @@ export function LiveBackstage() {
     const needsReprint = cart.needs_label_reprint;
 
     return (
-      <div 
+      <div
         key={cart.id}
         className={`p-3 rounded-lg border hover:bg-muted/30 transition-colors cursor-pointer ${hasCancelledItems ? 'border-amber-300 bg-amber-50/30' : ''}`}
         onClick={() => setCartDetailModal(cart)}
@@ -1038,8 +1037,8 @@ export function LiveBackstage() {
       <header className="border-b bg-card px-2 sm:px-4 py-2 sm:py-3 shrink-0">
         {/* Top row - Back button, title, live badge */}
         <div className="flex items-center gap-2 mb-2">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             size="icon"
             className="h-9 w-9 shrink-0"
             onClick={() => navigate("/dashboard?tab=lives")}
@@ -1051,7 +1050,7 @@ export function LiveBackstage() {
             <span className="hidden sm:inline">AO VIVO</span>
           </Badge>
           <h1 className="font-medium text-sm sm:text-base truncate">{event.titulo}</h1>
-          
+
           {/* Live KPIs - compact on mobile */}
           <div className="hidden sm:flex items-center gap-3 text-sm ml-auto">
             <Tooltip>
@@ -1183,7 +1182,7 @@ export function LiveBackstage() {
           getAvailableStock={getAvailableStock}
           onOfferClick={handleWaitlistAlertOffer}
         />
-        
+
         {/* Pending Carts Alert */}
         <PendingCartsAlert
           carts={carts}
@@ -1218,7 +1217,7 @@ export function LiveBackstage() {
               )}
             </TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="produtos" className="flex-1 overflow-hidden m-0 p-4">
             <Card className="h-full flex flex-col">
               <CardHeader className="shrink-0 pb-3">
@@ -1245,7 +1244,7 @@ export function LiveBackstage() {
               </CardContent>
             </Card>
           </TabsContent>
-          
+
           <TabsContent value="lancador" className="flex-1 overflow-hidden m-0 p-4">
             <Card className="h-full flex flex-col">
               <CardHeader className="shrink-0 pb-3">
@@ -1259,7 +1258,7 @@ export function LiveBackstage() {
               </CardContent>
             </Card>
           </TabsContent>
-          
+
           <TabsContent value="carrinhos" className="flex-1 overflow-hidden m-0 p-4">
             <Card className="h-full flex flex-col">
               <CardHeader className="shrink-0 pb-3">
@@ -1280,32 +1279,29 @@ export function LiveBackstage() {
                 <div className="flex gap-1.5 mt-2">
                   <button
                     onClick={() => setCustomerFilter("all")}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                      customerFilter === "all"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                    }`}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${customerFilter === "all"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      }`}
                   >
                     Todos ({carts.length})
                   </button>
                   <button
                     onClick={() => setCustomerFilter("registered")}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
-                      customerFilter === "registered"
-                        ? "bg-green-600 text-white"
-                        : "bg-green-100 text-green-700 hover:bg-green-200"
-                    }`}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${customerFilter === "registered"
+                      ? "bg-green-600 text-white"
+                      : "bg-green-100 text-green-700 hover:bg-green-200"
+                      }`}
                   >
                     <Check className="h-3 w-3" />
                     Cadastrados ({registeredCount})
                   </button>
                   <button
                     onClick={() => setCustomerFilter("new")}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
-                      customerFilter === "new"
-                        ? "bg-amber-600 text-white"
-                        : "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                    }`}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${customerFilter === "new"
+                      ? "bg-amber-600 text-white"
+                      : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                      }`}
                   >
                     <User className="h-3 w-3" />
                     Novos ({newCount})
@@ -1327,7 +1323,7 @@ export function LiveBackstage() {
               </CardContent>
             </Card>
           </TabsContent>
-          
+
           <TabsContent value="fila" className="flex-1 overflow-hidden m-0 p-4">
             <Card className="h-full flex flex-col">
               <CardHeader className="shrink-0 pb-3">
@@ -1421,32 +1417,29 @@ export function LiveBackstage() {
             <div className="flex gap-1.5 mt-2">
               <button
                 onClick={() => setCustomerFilter("all")}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                  customerFilter === "all"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }`}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${customerFilter === "all"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
               >
                 Todos ({carts.length})
               </button>
               <button
                 onClick={() => setCustomerFilter("registered")}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
-                  customerFilter === "registered"
-                    ? "bg-green-600 text-white"
-                    : "bg-green-100 text-green-700 hover:bg-green-200"
-                }`}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${customerFilter === "registered"
+                  ? "bg-green-600 text-white"
+                  : "bg-green-100 text-green-700 hover:bg-green-200"
+                  }`}
               >
                 <Check className="h-3 w-3" />
                 Cadastrados ({registeredCount})
               </button>
               <button
                 onClick={() => setCustomerFilter("new")}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
-                  customerFilter === "new"
-                    ? "bg-amber-600 text-white"
-                    : "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                }`}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${customerFilter === "new"
+                  ? "bg-amber-600 text-white"
+                  : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                  }`}
               >
                 <User className="h-3 w-3" />
                 Novos ({newCount})
@@ -1525,8 +1518,8 @@ export function LiveBackstage() {
           size={waitlistDrawer.size}
           entries={getWaitlistEntries(waitlistDrawer.productId, waitlistDrawer.size)}
           hasStock={getAvailableStock(
-            waitlistDrawer.productId, 
-            waitlistDrawer.size, 
+            waitlistDrawer.productId,
+            waitlistDrawer.size,
             (products.find(p => p.product_id === waitlistDrawer.productId)?.product as any)?.available_by_size?.[waitlistDrawer.size] || 0
           ) > 0}
           onAllocate={handleWaitlistOffer}
@@ -1635,9 +1628,9 @@ export function LiveBackstage() {
           </SheetHeader>
           <div className="p-4">
             {eventId && (
-              <LiveRaffle 
-                eventId={eventId} 
-                carts={carts} 
+              <LiveRaffle
+                eventId={eventId}
+                carts={carts}
                 onRefresh={fetchBackstageData}
                 onRaffleOverlayChange={setIsRaffleOverlayActive}
               />

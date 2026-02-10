@@ -12,10 +12,11 @@ const NUMERIC_SIZES = ["34", "36", "38", "40", "42", "44", "46"];
 export function StockBySize({ stock, onChange }: StockBySizeProps) {
   const handleChange = (size: string, value: string) => {
     const numValue = parseInt(value) || 0;
-    onChange({
+    const newStock = {
       ...stock,
       [size]: Math.max(0, numValue),
-    });
+    };
+    onChange(newStock);
   };
 
   const totalStock = Object.values(stock).reduce((sum, val) => sum + (val || 0), 0);

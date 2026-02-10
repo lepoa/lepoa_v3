@@ -7,7 +7,12 @@ import {
   Instagram,
   Check,
   AlertTriangle,
+  Pencil,
+  Save,
+  X,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,13 +49,22 @@ export function MassChargeModal({
   const [sentCount, setSentCount] = useState(0);
   const [copiedIndices, setCopiedIndices] = useState<Set<number>>(new Set());
   const [chargedIndices, setChargedIndices] = useState<Set<number>>(new Set());
-  
+
   // WhatsApp fallback modal state
   const [fallbackModal, setFallbackModal] = useState<{
     open: boolean;
     message: string;
     phone: string;
   }>({ open: false, message: "", phone: "" });
+
+  const [localOrders, setLocalOrders] = useState<LiveOrderCart[]>(orders);
+  const [editingPhoneId, setEditingPhoneId] = useState<string | null>(null);
+  const [tempPhone, setTempPhone] = useState("");
+
+  // Update local orders when props change
+  useEffect(() => {
+    setLocalOrders(orders);
+  }, [orders]);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -59,8 +73,42 @@ export function MassChargeModal({
       setCopiedIndices(new Set());
       setChargedIndices(new Set());
       setSentCount(0);
+      setEditingPhoneId(null);
     }
   }, [open, orders]);
+
+  const startEditing = (order: LiveOrderCart) => {
+    setEditingPhoneId(order.id);
+    setTempPhone(order.live_customer?.whatsapp || "");
+  };
+
+  const handleSavePhone = async (order: LiveOrderCart) => {
+    if (!tempPhone.trim()) return;
+
+    // Save to live_customers
+    const { error } = await supabase
+      .from("live_customers")
+      .update({ whatsapp: tempPhone })
+      .eq("id", order.live_customer!.id);
+
+    if (error) {
+      toast.error("Erro ao salvar telefone");
+      return;
+    }
+
+    // Update local state to reflect change immediately
+    setLocalOrders(prev => prev.map(o =>
+      o.id === order.id
+        ? { ...o, live_customer: { ...o.live_customer!, whatsapp: tempPhone } }
+        : o
+    ));
+
+    // Auto-select the order now that it has a phone
+    setSelected(prev => new Set([...prev, order.id]));
+
+    setEditingPhoneId(null);
+    toast.success("Telefone salvo!");
+  };
 
   const formatPrice = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -87,7 +135,7 @@ export function MassChargeModal({
     }
   };
 
-  const selectedOrders = orders.filter(o => selected.has(o.id));
+  const selectedOrders = localOrders.filter(o => selected.has(o.id));
 
   // Build bag link
   const getBagLink = (order: LiveOrderCart) => {
@@ -103,7 +151,7 @@ export function MassChargeModal({
   // Handle WhatsApp send - opens one by one
   const handleWhatsAppSend = async () => {
     const ordersToSend = selectedOrders.filter(o => o.live_customer?.whatsapp);
-    
+
     if (ordersToSend.length === 0) {
       toast.error("Nenhum pedido selecionado tem WhatsApp");
       return;
@@ -116,7 +164,7 @@ export function MassChargeModal({
       const order = ordersToSend[i];
       const message = buildMessage(order);
       const link = buildWhatsAppLink(order.live_customer!.whatsapp!, message);
-      
+
       try {
         window.open(link, '_blank');
       } catch (e) {
@@ -127,7 +175,7 @@ export function MassChargeModal({
           phone: order.live_customer!.whatsapp!,
         });
       }
-      
+
       await onRecordCharge(order.id, 'whatsapp', true);
       setSentCount(i + 1);
 
@@ -146,10 +194,10 @@ export function MassChargeModal({
   const handleCopyMessage = async (order: LiveOrderCart, index: number) => {
     const message = buildMessage(order);
     await navigator.clipboard.writeText(message);
-    
+
     // Mark as copied visually (but don't record charge yet)
     setCopiedIndices(prev => new Set([...prev, index]));
-    
+
     toast.success("Mensagem copiada!");
     // DON'T close the modal
   };
@@ -224,7 +272,7 @@ export function MassChargeModal({
             <>
               {/* Selection for WhatsApp */}
               <div className="flex items-center gap-2 py-2 border-b mt-2">
-                <Checkbox 
+                <Checkbox
                   checked={selected.size === orders.length}
                   onCheckedChange={selectAll}
                 />
@@ -239,20 +287,20 @@ export function MassChargeModal({
               {/* WhatsApp Order list */}
               <ScrollArea className="flex-1 min-h-[200px] max-h-[300px]">
                 <div className="space-y-2 pr-4">
-                  {orders.map((order) => {
+                  {localOrders.map((order) => {
                     const hasWhatsApp = !!order.live_customer?.whatsapp;
-                    
+                    const isEditing = editingPhoneId === order.id;
+
                     return (
-                      <div 
+                      <div
                         key={order.id}
-                        className={`flex items-center gap-3 p-3 rounded-lg border ${
-                          !hasWhatsApp ? 'opacity-50 bg-muted' : 'hover:bg-muted/50'
-                        }`}
+                        className={`flex items-center gap-3 p-3 rounded-lg border ${!hasWhatsApp && !isEditing ? 'opacity-90 bg-muted/30' : 'hover:bg-muted/50'
+                          }`}
                       >
-                        <Checkbox 
+                        <Checkbox
                           checked={selected.has(order.id)}
                           onCheckedChange={() => toggleSelect(order.id)}
-                          disabled={!hasWhatsApp}
+                          disabled={!hasWhatsApp && !isEditing}
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -263,16 +311,58 @@ export function MassChargeModal({
                               {displayInstagram(order.live_customer?.instagram_handle || '')}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                            {hasWhatsApp ? (
-                              <span className="text-emerald-600">✓ WhatsApp</span>
-                            ) : (
-                              <span className="text-rose-600">Sem WhatsApp</span>
-                            )}
-                            {order.charge_attempts > 0 && (
-                              <span>• {order.charge_attempts}x cobrada</span>
-                            )}
-                          </div>
+
+                          {isEditing ? (
+                            <div className="flex items-center gap-1 mt-1">
+                              <Input
+                                value={tempPhone}
+                                onChange={(e) => setTempPhone(e.target.value)}
+                                placeholder="1199..."
+                                className="h-7 text-xs w-32 bg-white"
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSavePhone(order);
+                                  if (e.key === 'Escape') setEditingPhoneId(null);
+                                }}
+                              />
+                              <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-100" onClick={() => handleSavePhone(order)}>
+                                <Save className="h-4 w-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:bg-muted" onClick={() => setEditingPhoneId(null)}>
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1 h-7">
+                              {hasWhatsApp ? (
+                                <span className="text-emerald-600 flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                                  ✓ {order.live_customer?.whatsapp}
+                                  <button onClick={() => startEditing(order)} className="ml-1 text-emerald-400 hover:text-emerald-700 p-0.5 rounded-full hover:bg-emerald-100 transition-colors" title="Editar">
+                                    <Pencil className="h-3 w-3" />
+                                  </button>
+                                </span>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-rose-600 font-medium flex items-center gap-1 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    Sem WhatsApp
+                                  </span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-xs border-dashed text-muted-foreground hover:text-foreground hover:border-solid hover:bg-white transition-all"
+                                    onClick={() => startEditing(order)}
+                                  >
+                                    + Adicionar
+                                  </Button>
+                                </div>
+                              )}
+
+                              {order.charge_attempts > 0 && (
+                                <span className="ml-1 px-1.5 py-0.5 bg-gray-100 rounded text-[10px] font-medium">• {order.charge_attempts}x cobrada</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <span className="font-bold text-sm">{formatPrice(order.total)}</span>
                       </div>
@@ -290,7 +380,7 @@ export function MassChargeModal({
                   <Button variant="outline" onClick={onClose}>
                     Fechar
                   </Button>
-                  <Button 
+                  <Button
                     onClick={handleWhatsAppSend}
                     disabled={isSending || selectedOrders.filter(o => o.live_customer?.whatsapp).length === 0}
                     className="bg-emerald-600 hover:bg-emerald-700"
@@ -319,14 +409,13 @@ export function MassChargeModal({
                     const isCopied = copiedIndices.has(index);
                     const isCharged = chargedIndices.has(index);
                     const profileUrl = getInstagramProfileUrl(handle);
-                    
+
                     return (
-                      <div 
+                      <div
                         key={order.id}
-                        className={`p-4 rounded-lg border ${
-                          isCharged ? 'bg-emerald-50 border-emerald-200' : 
+                        className={`p-4 rounded-lg border ${isCharged ? 'bg-emerald-50 border-emerald-200' :
                           isCopied ? 'bg-amber-50 border-amber-200' : 'bg-background'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-start justify-between gap-3 mb-3">
                           <div>
@@ -372,8 +461,8 @@ export function MassChargeModal({
 
                         <div className="flex flex-col gap-2">
                           <div className="flex items-center gap-2">
-                            <Button 
-                              variant="outline" 
+                            <Button
+                              variant="outline"
                               size="sm"
                               className="flex-1"
                               onClick={() => handleCopyMessage(order, index)}
@@ -381,8 +470,8 @@ export function MassChargeModal({
                               <Copy className="h-4 w-4 mr-2" />
                               Copiar mensagem
                             </Button>
-                            <Button 
-                              variant="outline" 
+                            <Button
+                              variant="outline"
                               size="sm"
                               className="flex-1"
                               onClick={() => handleCopyLink(order)}
@@ -391,8 +480,8 @@ export function MassChargeModal({
                               Só link
                             </Button>
                             {profileUrl && (
-                              <Button 
-                                variant="outline" 
+                              <Button
+                                variant="outline"
                                 size="sm"
                                 asChild
                               >
@@ -403,7 +492,7 @@ export function MassChargeModal({
                             )}
                           </div>
                           {!isCharged && (
-                            <Button 
+                            <Button
                               size="sm"
                               variant="secondary"
                               className="w-full border-amber-300 text-amber-700 hover:bg-amber-100"

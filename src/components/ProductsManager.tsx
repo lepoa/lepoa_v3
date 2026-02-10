@@ -54,7 +54,7 @@ interface Product {
 interface AvailableStockEntry {
   product_id: string;
   size: string;
-  stock: number;      // renamed from on_hand to match view
+  on_hand: number;      // field name from the view
   committed: number;
   reserved: number;
   available: number;
@@ -84,23 +84,32 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
   // Fetch available stock from the view
   const loadAvailableStock = useCallback(async (productIds: string[]) => {
     if (productIds.length === 0) return;
-    
+
     try {
       const { data, error } = await supabase
         .from("product_available_stock")
         .select("*")
         .in("product_id", productIds);
-      
+
       if (error) throw error;
-      
+
       const stockMap = new Map<string, Map<string, AvailableStockEntry>>();
-      (data || []).forEach((entry: AvailableStockEntry) => {
+      (data || []).forEach((entry: any) => {
         if (!stockMap.has(entry.product_id)) {
           stockMap.set(entry.product_id, new Map());
         }
-        stockMap.get(entry.product_id)!.set(entry.size, entry);
+        // Map on_hand to match our interface if needed
+        const mappedEntry: AvailableStockEntry = {
+          product_id: entry.product_id,
+          size: entry.size,
+          on_hand: entry.on_hand || entry.stock || 0,
+          committed: entry.committed || 0,
+          reserved: entry.reserved || 0,
+          available: entry.available || 0
+        };
+        stockMap.get(entry.product_id)!.set(entry.size, mappedEntry);
       });
-      
+
       setAvailableStock(stockMap);
     } catch (error) {
       console.error("Error loading available stock:", error);
@@ -131,8 +140,9 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
       const { data, error } = await query;
 
       if (error) throw error;
+
       setProducts(data || []);
-      
+
       // Load available stock for these products
       if (data && data.length > 0) {
         loadAvailableStock(data.map((p: Product) => p.id));
@@ -172,7 +182,7 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
 
   const handleDeleteConfirm = async () => {
     if (!productToDelete) return;
-    
+
     try {
       const { error } = await supabase
         .from("product_catalog")
@@ -229,27 +239,27 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
   // Sort sizes: letter sizes first (PP, P, M, G, GG, etc.), then numeric sizes in ascending order
   const sortSizes = (entries: [string, number][]): [string, number][] => {
     const letterOrder = ["PP", "P", "M", "G", "GG", "XG", "XXG", "XXXG", "UN"];
-    
+
     return entries.sort(([a], [b]) => {
       const aIsLetter = letterOrder.includes(a.toUpperCase());
       const bIsLetter = letterOrder.includes(b.toUpperCase());
       const aIsNumeric = /^\d+$/.test(a);
       const bIsNumeric = /^\d+$/.test(b);
-      
+
       // Letters come first
       if (aIsLetter && !bIsLetter) return -1;
       if (!aIsLetter && bIsLetter) return 1;
-      
+
       // Both are letters - sort by predefined order
       if (aIsLetter && bIsLetter) {
         return letterOrder.indexOf(a.toUpperCase()) - letterOrder.indexOf(b.toUpperCase());
       }
-      
+
       // Both are numeric - sort numerically
       if (aIsNumeric && bIsNumeric) {
         return parseInt(a) - parseInt(b);
       }
-      
+
       // Default alphabetical
       return a.localeCompare(b);
     });
@@ -394,14 +404,14 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
                     {(() => {
                       // Use available stock from view if available
                       const productAvailableStock = availableStock.get(product.id);
-                      
+
                       if (productAvailableStock && productAvailableStock.size > 0) {
                         // Use the view data (shows available = on_hand - committed - reserved)
                         const entries: [string, AvailableStockEntry][] = Array.from(productAvailableStock.entries());
                         const sortedBySize = sortSizes(entries.map(([size, entry]) => [size, entry.available] as [string, number]));
                         const withAvailable = sortedBySize.filter(([, qty]) => qty > 0);
                         const withoutAvailable = sortedBySize.filter(([, qty]) => qty <= 0);
-                        
+
                         if (sortedBySize.length === 0) {
                           return (
                             <span className="text-xs text-amber-600">
@@ -409,18 +419,24 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
                             </span>
                           );
                         }
-                        
+
                         if (withAvailable.length === 0) {
                           return (
                             <>
                               <span className="text-xs text-amber-600 mr-1">⚠️ Esgotado</span>
                               {withoutAvailable.slice(0, 4).map(([size]) => {
                                 const entry = productAvailableStock.get(size);
+                                const stockEntry = entry ? {
+                                  stock: entry.on_hand,
+                                  reserved: entry.reserved,
+                                  committed: entry.committed,
+                                  available: entry.available
+                                } : null;
                                 return (
                                   <StockBreakdownTooltip
                                     key={size}
                                     size={size}
-                                    stock={entry || null}
+                                    stock={stockEntry}
                                     hasReservations={(entry?.reserved || 0) > 0}
                                   />
                                 );
@@ -431,7 +447,7 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
                             </>
                           );
                         }
-                        
+
                         return (
                           <>
                             {withAvailable.slice(0, 5).map(([size]) => {
@@ -439,12 +455,20 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
                               const reserved = entry?.reserved || 0;
                               const committed = entry?.committed || 0;
                               const hasReservations = reserved > 0 || committed > 0;
-                              
+
+                              // Map on_hand to stock for StockBreakdownTooltip
+                              const stockEntry = entry ? {
+                                stock: entry.on_hand,  // on_hand renamed to stock in view
+                                reserved: entry.reserved,
+                                committed: entry.committed,
+                                available: entry.available
+                              } : null;
+
                               return (
                                 <StockBreakdownTooltip
                                   key={size}
                                   size={size}
-                                  stock={entry || null}
+                                  stock={stockEntry}
                                   hasReservations={hasReservations}
                                 />
                               );
@@ -457,14 +481,14 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
                           </>
                         );
                       }
-                      
+
                       // Fallback to stock_by_size if view data not available
                       const stock = getStockBySize(product.stock_by_size);
                       const allEntries = Object.entries(stock);
                       const sortedEntries = sortSizes(allEntries);
                       const withStock = sortedEntries.filter(([, qty]) => qty > 0);
                       const withoutStock = sortedEntries.filter(([, qty]) => qty === 0);
-                      
+
                       if (allEntries.length === 0) {
                         return (
                           <span className="text-xs text-amber-600">
@@ -472,7 +496,7 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
                           </span>
                         );
                       }
-                      
+
                       if (withStock.length === 0) {
                         return (
                           <>
@@ -490,7 +514,7 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
                           </>
                         );
                       }
-                      
+
                       // If no view data, create basic entries from stock_by_size
                       return (
                         <>
@@ -514,11 +538,10 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
                 <TableCell>
                   <div className="flex flex-col items-start gap-1">
                     <div className="flex items-center gap-1">
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        product.is_active
-                          ? "bg-green-100 text-green-700"
-                          : "bg-gray-100 text-gray-600"
-                      }`}>
+                      <span className={`text-xs px-2 py-1 rounded-full ${product.is_active
+                        ? "bg-green-100 text-green-700"
+                        : "bg-gray-100 text-gray-600"
+                        }`}>
                         {product.is_active ? "Ativo" : "Arquivado"}
                       </span>
                       {product.created_from_import && (
@@ -604,7 +627,7 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleDeleteConfirm}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >

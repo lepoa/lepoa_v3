@@ -54,11 +54,23 @@ Deno.serve(async (req) => {
       return errorResponse("MP_UNAVAILABLE", "Mercado Pago não configurado no sistema", 500);
     }
 
+    // Log request details for debugging
+    console.log("[create-live-cart-payment] Nova requisição recebida");
+    // console.log("[create-live-cart-payment] Headers:", JSON.stringify(Object.fromEntries(req.headers.entries())));
+
     let requestBody: CreateLivePaymentRequest;
     try {
-      requestBody = await req.json();
-    } catch {
-      return errorResponse("INVALID_JSON", "Corpo da requisição inválido", 400);
+      // Read body as text first to log it
+      const rawBody = await req.text();
+      console.log("[create-live-cart-payment] Raw Body:", rawBody);
+
+      if (!rawBody) {
+        return errorResponse("INVALID_JSON", "Corpo da requisição vazio", 400);
+      }
+      requestBody = JSON.parse(rawBody);
+    } catch (err) {
+      console.error("[create-live-cart-payment] JSON Parse Error:", err);
+      return errorResponse("INVALID_JSON", "Corpo da requisição inválido (JSON malformado)", 400);
     }
 
     const { live_cart_id, public_token, shipping_fee, payer_email, payer_name, payer_phone, payer_cpf, customer_notes } = requestBody;
@@ -222,8 +234,10 @@ Deno.serve(async (req) => {
     }
 
     const baseUrl = SUPABASE_URL.replace("/rest/v1", "");
-    const origin = req.headers.get("origin") || req.headers.get("referer");
-    const siteUrl = origin ? origin.replace(/\/$/, "") : "https://seuprovador.lovable.app";
+    // FORCE PRODUCTION URL: Mercado Pago rejects localhost/http URLs for back_urls.
+    // Switched to user's staging domain to ensure correct redirects and validation.
+    // IMPORTANT: No trailing slash!
+    const siteUrl = "https://lightcoral-cod-859891.hostingersite.com";
 
     const preferencePayload: Record<string, unknown> = {
       items: mpItems,
@@ -247,14 +261,7 @@ Deno.serve(async (req) => {
       },
     };
 
-    console.log("Creating MP preference with payer:", JSON.stringify({
-      items_count: mpItems.length,
-      calculated_total: calculatedTotal,
-      has_email: !!resolvedEmail,
-      has_cpf: !!finalCpf,
-      has_phone: !!resolvedPhone,
-      has_address: !!addressSnapshot?.zip_code,
-    }));
+    console.log("Creating MP preference payload:", JSON.stringify(preferencePayload));
 
     let mpResponse: Response;
     try {

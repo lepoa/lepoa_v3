@@ -133,7 +133,7 @@ function normalizeColor(color: string | null): string | null {
     return ERP_TO_FORM_COLOR[normalized];
   }
   // If not in map, capitalize first letter of each word
-  return color.trim().split(/\s+/).map(word => 
+  return color.trim().split(/\s+/).map(word =>
     word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
   ).join(" ");
 }
@@ -157,15 +157,15 @@ const AI_TO_FORM_COLOR: Record<string, string> = ERP_TO_FORM_COLOR;
 export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: ProductFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
-  
+
   // Multi-image state
   const [images, setImages] = useState<string[]>([]);
   const [mainImageIndex, setMainImageIndex] = useState(0);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  
+
   // Stock state
   const [stockBySize, setStockBySize] = useState<Record<string, number>>({});
-  
+
   const [formData, setFormData] = useState<Product>({
     name: "",
     sku: null,
@@ -198,7 +198,7 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
     if (product) {
       // Normalize the color from ERP/DB to match form options
       const normalizedColor = normalizeColor(product.color);
-      
+
       setFormData({
         ...product,
         // Auto-fill SKU with group_key if SKU is empty (for imported products)
@@ -218,7 +218,7 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
       setMainImageIndex(product.main_image_index || 0);
       setVideoUrl(product.video_url || null);
       setStockBySize(product.stock_by_size || {});
-      
+
       // Add custom color to available options if not already present
       if (normalizedColor && !BASE_COLORS.includes(normalizedColor)) {
         setAvailableColors([...BASE_COLORS, normalizedColor]);
@@ -274,21 +274,21 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
 
   const handleApplyField = (field: string, value: string) => {
     let mappedValue = value;
-    
+
     if (field === "category") {
       mappedValue = AI_TO_FORM_CATEGORY[value.toLowerCase()] || value;
     } else if (field === "color") {
       mappedValue = AI_TO_FORM_COLOR[value.toLowerCase()] || value;
     }
-    
+
     setFormData(prev => ({ ...prev, [field]: mappedValue }));
   };
 
   const handleApplyAll = () => {
     if (!analysisResult) return;
-    
+
     const updates: Partial<Product> = {};
-    
+
     if (analysisResult.categoria.value) {
       updates.category = AI_TO_FORM_CATEGORY[analysisResult.categoria.value.toLowerCase()] || analysisResult.categoria.value;
     }
@@ -304,7 +304,7 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
     if (analysisResult.modelagem.value) {
       updates.modeling = analysisResult.modelagem.value;
     }
-    
+
     setFormData(prev => ({ ...prev, ...updates }));
     toast.success("Sugestões aplicadas!");
   };
@@ -312,18 +312,18 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
   const handleApplySelected = (selections: SelectedFields) => {
     const updates: Partial<Product> = {};
     const fields = ["category", "color", "style", "occasion", "modeling"] as const;
-    
+
     fields.forEach((field) => {
       if (selections[field].selected && selections[field].value) {
         updates[field] = selections[field].value;
       }
     });
-    
+
     // Also add tags from selections
     if (selections.tags.length > 0) {
       updates.tags = [...new Set([...formData.tags, ...selections.tags])];
     }
-    
+
     setFormData(prev => ({ ...prev, ...updates }));
     toast.success("Sugestões aplicadas!");
   };
@@ -331,12 +331,12 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
   const handleGenerateDescription = async () => {
     // Check if we have an image to analyze
     const imageToAnalyze = images[mainImageIndex] || images[0];
-    
+
     if (!imageToAnalyze) {
       toast.error("Adicione uma imagem do produto primeiro");
       return;
     }
-    
+
     setIsGeneratingDescription(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-product-description", {
@@ -359,10 +359,10 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
 
       if (data?.success && data?.data) {
         const result = data.data;
-        
+
         // Build premium description from AI response
         let fullDescription = result.descricao_completa || "";
-        
+
         // Add differentials as bullet points if available
         if (result.diferenciais && result.diferenciais.length > 0) {
           fullDescription += "\n\n✨ Diferenciais:\n";
@@ -370,21 +370,21 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
             fullDescription += `• ${diff}\n`;
           });
         }
-        
+
         // Add SEO keywords at the end
         if (result.palavras_chave && result.palavras_chave.length > 0) {
           fullDescription += `\n🏷️ Tags: ${result.palavras_chave.join(", ")}`;
         }
 
-        setFormData(prev => ({ 
-          ...prev, 
+        setFormData(prev => ({
+          ...prev,
           description: fullDescription,
           // Optionally update name if it was empty
           name: prev.name || result.nome_produto || prev.name,
         }));
-        
+
         toast.success("Descrição premium gerada com sucesso!");
-        
+
         // Show the ad phrase as a secondary toast
         if (result.frase_anuncio) {
           setTimeout(() => {
@@ -423,7 +423,7 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
     try {
       // Derive sizes from stock
       const sizesFromStock = getAvailableSizes(stockBySize);
-      
+
       // Main image URL (for backward compatibility)
       const mainImageUrl = images[mainImageIndex] || images[0] || null;
 
@@ -647,7 +647,7 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
                   <p className="text-xs text-amber-600 mt-1">⚠️ Peso obrigatório para produtos ativos. O frete usará 0.30kg como padrão.</p>
                 )}
               </div>
-              
+
               <div>
                 <Label className="text-muted-foreground text-xs mb-2 block">
                   Dimensões (cm) - opcional, padrão: {DEFAULT_DIMENSIONS.length}x{DEFAULT_DIMENSIONS.width}x{DEFAULT_DIMENSIONS.height}
@@ -823,8 +823,8 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
           {/* Customer Suggestions - only show when editing existing product */}
           {product?.id && (
             <div className="border-t pt-6">
-              <CustomerSuggestions 
-                productId={product.id} 
+              <CustomerSuggestions
+                productId={product.id}
                 productName={formData.name || product.name}
               />
             </div>
@@ -847,10 +847,10 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
               Cancelar
             </Button>
-            <Button 
-              type="button" 
+            <Button
+              type="button"
               variant="secondary"
-              disabled={isSubmitting} 
+              disabled={isSubmitting}
               onClick={(e) => handleSubmit(e, true)}
             >
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar rápido"}

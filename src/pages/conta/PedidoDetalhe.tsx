@@ -65,7 +65,7 @@ export default function PedidoDetalhe() {
   const [isCreatingPayment, setIsCreatingPayment] = useState(false);
   const [expiryCountdown, setExpiryCountdown] = useState<string | null>(null);
 
-useEffect(() => {
+  useEffect(() => {
     if (!authLoading && !user) {
       navigate("/minha-conta");
     }
@@ -156,40 +156,77 @@ useEffect(() => {
   const handlePayNow = async () => {
     if (!order) return;
 
-    // If we have a valid checkout URL, just open it
+    console.log("[PedidoDetalhe] Iniciando pagamento...", { orderId: order.id });
+
+    // If we have a valid checkout URL, redirection
     if (order.mp_checkout_url) {
-      window.open(order.mp_checkout_url, "_blank");
+      console.log("[PedidoDetalhe] Redirecionando para URL existente:", order.mp_checkout_url);
+      window.location.href = order.mp_checkout_url;
       return;
     }
 
     // Otherwise, create a new preference (fallback)
     setIsCreatingPayment(true);
     try {
+      console.log("[PedidoDetalhe] Invocando create-mp-preference...");
+
       const { data, error } = await supabase.functions.invoke("create-mp-preference", {
         body: { order_id: order.id, payer_email: user?.email || "" },
       });
 
+      console.log("[PedidoDetalhe] Retorno da Edge Function:", { data, error });
+
       if (error) {
-        console.error("MP preference error:", error);
-        toast.error("Erro ao criar link de pagamento. Tente novamente.");
+        console.error("[PedidoDetalhe] Erro RPC:", error);
+        let msg = "Erro ao conectar com servidor de pagamento.";
+        try {
+          if (typeof error === 'string') msg = error;
+          if (error.message) msg = error.message;
+          if (error.message === "Failed to fetch") msg = "Erro de conexão (CORS/Network). Verifique sua internet.";
+        } catch (e) { /* ignore */ }
+
+        toast.error(`${msg} Tente novamente.`);
         return;
       }
 
       if (data?.error_code || data?.error) {
-        toast.error(data.error || "Erro ao gerar pagamento");
+        console.error("[PedidoDetalhe] Erro retornado pela API:", data);
+        toast.error(`Erro no pagamento: ${data.message || data.error || "Falha desconhecida"}`);
         return;
       }
 
-      if (data?.init_point) {
+      // Prioriza init_point (produção), mas aceita sandbox se for teste
+      const checkoutUrl = data.init_point || data.sandbox_init_point;
+
+      if (checkoutUrl) {
+        console.log("[PedidoDetalhe] Link gerado:", checkoutUrl);
+
         // Update local state with new URL
-        setOrder({ ...order, mp_checkout_url: data.init_point, mp_preference_id: data.preference_id });
-        window.open(data.init_point, "_blank");
+        const updatedOrder = {
+          ...order,
+          mp_checkout_url: checkoutUrl,
+          mp_preference_id: data.preference_id
+        };
+        setOrder(updatedOrder);
+
+        // CRITICAL FIX: Force update in DB from client side as backup
+        await supabase
+          .from("orders")
+          .update({
+            mp_checkout_url: checkoutUrl,
+            mp_preference_id: data.preference_id,
+            total: data.calculated_total || order.total // Use calculated total if available
+          })
+          .eq("id", order.id);
+
+        window.location.href = checkoutUrl;
       } else {
-        toast.error("Link de pagamento não disponível");
+        console.error("[PedidoDetalhe] Nenhuma URL retornada:", data);
+        toast.error("Link de pagamento não disponível (resposta vazia).");
       }
-    } catch (err) {
-      console.error("Payment error:", err);
-      toast.error("Erro de conexão. Tente novamente.");
+    } catch (err: any) {
+      console.error("[PedidoDetalhe] Exceção crítica:", err);
+      toast.error(`Erro de conexão: ${err.message || "Tente novamente."}`);
     } finally {
       setIsCreatingPayment(false);
     }
@@ -216,14 +253,14 @@ useEffect(() => {
 
   const getWhatsAppUrl = () => {
     if (!order) return "";
-    
+
     const orderItems = items.map((item) => ({
       name: item.product_name,
       size: item.size,
       color: item.color,
       quantity: item.quantity,
     }));
-    
+
     const message = buildOrderDetailMessage(
       getOrderNumber(order.id),
       orderItems,
@@ -234,10 +271,10 @@ useEffect(() => {
   };
 
   // Check if payment is allowed
-  const isReservationExpired = order?.reserved_until 
-    ? new Date(order.reserved_until) < new Date() 
+  const isReservationExpired = order?.reserved_until
+    ? new Date(order.reserved_until) < new Date()
     : false;
-  
+
   const canPay = order?.status === "aguardando_pagamento" && !isReservationExpired;
   const canCancel = order && (order.status === "pendente" || order.status === "aguardando_pagamento") && !isReservationExpired;
 
@@ -338,7 +375,7 @@ useEffect(() => {
             </CardContent>
           </Card>
         )}
-        
+
         {/* Etiqueta gerada but no valid tracking yet */}
         {order.status === 'etiqueta_gerada' && !isValidTrackingCode(order.tracking_code) && (
           <Card className="mb-4 border-purple-200 bg-purple-50 dark:bg-purple-950/20">
@@ -433,7 +470,7 @@ useEffect(() => {
                       Reserva expirada
                     </p>
                     <p className="text-xs text-amber-700 dark:text-amber-300">
-                      Os itens podem ter sido liberados para outros clientes. 
+                      Os itens podem ter sido liberados para outros clientes.
                       Entre em contato para verificar disponibilidade.
                     </p>
                   </div>
@@ -463,8 +500,8 @@ useEffect(() => {
 
           {/* Pay Now Button */}
           {canPay && (
-            <Button 
-              className="w-full gap-2" 
+            <Button
+              className="w-full gap-2"
               onClick={handlePayNow}
               disabled={isCreatingPayment}
             >
@@ -487,8 +524,8 @@ useEffect(() => {
             </Button>
           )}
 
-          <WhatsAppButton 
-            href={getWhatsAppUrl()} 
+          <WhatsAppButton
+            href={getWhatsAppUrl()}
             label={order.status === "cancelado" ? "Falar com a loja mesmo assim" : "Falar no WhatsApp"}
             showMicrocopy={order.status !== "cancelado"}
           />

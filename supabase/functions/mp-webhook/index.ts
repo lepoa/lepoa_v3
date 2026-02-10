@@ -365,9 +365,8 @@ Deno.serve(async (req) => {
           live_customer:live_customers(*),
           items:live_cart_items(
             *,
-            product:product_catalog(id, name, image_url, color, price)
-          ),
-          live_event:live_events(id, titulo)
+            product:product_catalog(id, name, image_url, color)
+          )
         `)
         .eq("id", liveCartId)
         .single();
@@ -386,8 +385,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      const liveCartStatus = paymentStatus === "approved" ? "pago" : 
-                            paymentStatus === "rejected" ? "cancelado" : "aguardando_pagamento";
+      const liveCartStatus = paymentStatus === "approved" ? "pago" :
+        paymentStatus === "rejected" ? "cancelado" : "aguardando_pagamento";
 
       if (paymentStatus === "approved") {
         const customer = liveCart.live_customer;
@@ -397,10 +396,10 @@ Deno.serve(async (req) => {
         const addressSnapshot = liveCart.shipping_address_snapshot as Record<string, unknown> | null;
         const fullAddress = addressSnapshot?.full_address as string || "Endereço da live (verificar checkout)";
 
-        const activeItems = items.filter((item: any) => 
+        const activeItems = items.filter((item: any) =>
           item.status === "reservado" || item.status === "confirmado"
         );
-        const itemsSubtotal = activeItems.reduce((sum: number, item: any) => 
+        const itemsSubtotal = activeItems.reduce((sum: number, item: any) =>
           sum + (Number(item.preco_unitario) * item.qtd), 0
         );
 
@@ -456,6 +455,19 @@ Deno.serve(async (req) => {
         if (orderError) {
           logWebhook("error", "Failed to create order from live cart", { error: orderError });
           await logEvent(null, liveCartId, paymentId, payment.preference_id, eventType, mpStatus, payment.status_detail, confirmedAmount, "error", "Failed to create order: " + orderError.message, payment);
+
+          // FALLBACK: Update live_cart to PAGO even if order creation fails
+          // This ensures the dashboard shows the payment was received
+          if (paymentStatus === "approved") {
+            logWebhook("warn", "Applying fallback: Updating live_cart to PAGO despite order error");
+            await supabase.from("live_carts").update({
+              status: "pago",
+              paid_at: paidAt,
+              paid_method: payment.payment_method_id || "mercadopago",
+              updated_at: new Date().toISOString(),
+            }).eq("id", liveCartId);
+          }
+
         } else if (newOrder) {
           logWebhook("info", "Order created", { orderId: newOrder.id });
 
@@ -491,7 +503,7 @@ Deno.serve(async (req) => {
 
           const { data: updatedCart, error: cartUpdateError } = await supabase
             .from("live_carts")
-            .update({ 
+            .update({
               order_id: newOrder.id,
               status: liveCartStatus,
               paid_at: paidAt,
@@ -556,7 +568,7 @@ Deno.serve(async (req) => {
       } else {
         await supabase
           .from("live_carts")
-          .update({ 
+          .update({
             status: liveCartStatus,
             updated_at: new Date().toISOString(),
           })
@@ -627,8 +639,8 @@ Deno.serve(async (req) => {
         return new Response("OK", { status: 200, headers: corsHeaders });
       }
 
-      logWebhook("info", "✅ Order successfully updated to PAGO with stock effects", { 
-        orderId, 
+      logWebhook("info", "✅ Order successfully updated to PAGO with stock effects", {
+        orderId,
         status: updatedOrder.status,
         payment_status: updatedOrder.payment_status,
         stock_decremented: effectsResult?.stock_decremented,

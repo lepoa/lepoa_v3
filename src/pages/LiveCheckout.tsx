@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { 
+import {
   ShoppingCart, User, Truck, CreditCard, ArrowLeft, Package, MapPin, Store,
   Loader2, CheckCircle, AlertTriangle, Pencil,
 } from "lucide-react";
@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { usePhoneMask } from "@/hooks/usePhoneMask";
+import { useAuth } from "@/hooks/useAuth";
 import { useCepLookup } from "@/hooks/useCepLookup";
 import { STORE_CONFIG } from "@/lib/storeDeliveryConfig";
 import { MotoboyConfirmation, DeliveryPeriod, canProceedWithMotoboy } from "@/components/checkout/MotoboyConfirmation";
@@ -41,6 +42,7 @@ interface CartData {
   items: CartItem[];
   known_phone: string | null;
   known_customer_id: string | null;
+  known_email: string | null;
 }
 
 interface CartItem {
@@ -58,6 +60,29 @@ export default function LiveCheckout() {
   const { cartId } = useParams<{ cartId: string }>();
   const navigate = useNavigate();
   const publicToken = new URLSearchParams(window.location.search).get("token");
+  const { user, isLoading: authLoading } = useAuth();
+
+  // Enforce Login
+  useEffect(() => {
+    if (!authLoading && !user) {
+      const currentUrl = encodeURIComponent(window.location.pathname + window.location.search);
+      navigate(`/entrar?redirect=${currentUrl}`);
+    }
+  }, [user, authLoading, navigate]);
+
+  // Pre-fill from Profile
+  useEffect(() => {
+    if (user) {
+      supabase.from("profiles").select("*").eq("user_id", user.id).single().then(({ data }) => {
+        if (data) {
+          if (data.name) setNome(data.name);
+          if (data.whatsapp) {
+            phoneMask.setDisplayValue(data.whatsapp);
+          }
+        }
+      });
+    }
+  }, [user]); // phoneMask is stable
 
   // Cart state
   const [cart, setCart] = useState<CartData | null>(null);
@@ -129,8 +154,9 @@ export default function LiveCheckout() {
       }
 
       if (result.status === "pago") {
-        setError("Este carrinho já foi pago");
-        setIsLoading(false);
+        // If paid, redirect to success
+        toast.success("Pagamento confirmado!");
+        navigate(`/pedido/sucesso?live_cart_id=${cartId}`);
         return;
       }
 
@@ -143,6 +169,7 @@ export default function LiveCheckout() {
       } else if (result.customer_whatsapp) {
         phoneMask.setDisplayValue(result.customer_whatsapp);
       }
+      if (result.known_email) setEmail(result.known_email);
 
       // Pre-fill address from snapshot if exists
       if (result.shipping_address_snapshot) {
@@ -166,6 +193,17 @@ export default function LiveCheckout() {
   }, [cartId, publicToken]);
 
   useEffect(() => { loadCart(); }, [loadCart]);
+
+  // Polling for payment status
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (cart?.status === "aguardando_pagamento") {
+      interval = setInterval(() => {
+        loadCart();
+      }, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [cart?.status, loadCart]);
 
   const handleCepLookup = async () => {
     const cleanCep = zipCode.replace(/\D/g, "");
@@ -265,8 +303,17 @@ export default function LiveCheckout() {
 
   const generatePayment = async () => {
     if (!cartId) return;
+
+    console.log("[Checkout] Iniciando pagamento...", {
+      cartId,
+      deliveryFee: getDeliveryFee(),
+      payer: { email, nome, cpf: cpf.replace(/\D/g, "") }
+    });
+
     setIsProcessing(true);
     try {
+      console.log("[Checkout] Invocando create-live-cart-payment...");
+
       const { data, error } = await supabase.functions.invoke("create-live-cart-payment", {
         body: {
           live_cart_id: cartId,
@@ -280,19 +327,53 @@ export default function LiveCheckout() {
         },
       });
 
-      if (error) { toast.error("Erro de conexão com o servidor. Tente novamente."); return; }
-      if (data?.error_code || data?.message) {
-        toast.error(`${data.message}${data.action ? ` ${data.action}` : ""}`);
+      console.log("[Checkout] Retorno da Edge Function:", { data, error });
+
+      if (error) {
+        console.error("[Checkout] Erro na chamada RPC:", error);
+        // Tenta extrair mensagem de erro do corpo se disponível (às vezes vem como texto)
+        let msg = "Erro de conexão com o servidor.";
+        try {
+          if (typeof error === 'string') msg = error;
+          if (error.message) msg = error.message;
+          // Se for erro de rede/cors, avisa especificamente
+          if (error.message === "Failed to fetch") msg = "Erro de conexão (CORS/Network). Verifique sua internet.";
+        } catch (e) { /* ignore */ }
+
+        toast.error(`${msg} Tente novamente.`);
         return;
       }
-      if (data?.init_point) {
-        window.location.href = data.init_point;
-      } else {
-        toast.error("Link de pagamento não gerado. Tente novamente.");
+
+      if (data?.error || data?.error_code || (data?.message && !data?.init_point)) {
+        console.error("[Checkout] Erro retornado pela API:", data);
+        toast.error(`Erro no pagamento: ${data.message || "Falha desconhecida"}`);
+        return;
       }
-    } catch (err) {
-      console.error("Payment generation exception:", err);
-      toast.error("Erro ao gerar pagamento. Verifique sua conexão.");
+
+      // Prioriza init_point (produção), mas aceita sandbox se for teste
+      const checkoutUrl = data.init_point || data.sandbox_init_point;
+
+      if (checkoutUrl) {
+        console.log("[Checkout] URL gerada com sucesso:", checkoutUrl);
+
+        // Salva a preferência no banco via RPC para persistência (bypass RLS)
+        await supabase.rpc("set_live_cart_preference", {
+          p_cart_id: cartId,
+          p_preference_id: data.preference_id,
+          p_checkout_url: checkoutUrl,
+          p_total: data.calculated_total || undefined
+        });
+
+        // Redireciona
+        window.location.href = checkoutUrl;
+      } else {
+        console.error("[Checkout] Nenhuma URL retornada:", data);
+        toast.error("O Mercado Pago não retornou o link. Tente novamente.");
+      }
+
+    } catch (err: any) {
+      console.error("[Checkout] Exceção crítica:", err);
+      toast.error(`Erro crítico: ${err.message || "Falha inesperada"}`);
     } finally {
       setIsProcessing(false);
     }
@@ -440,19 +521,19 @@ export default function LiveCheckout() {
 
               <div className="space-y-2">
                 <Label>WhatsApp *</Label>
-                <Input 
-                  value={phoneMask.displayValue} 
-                  onChange={(e) => phoneMask.setDisplayValue(e.target.value)} 
+                <Input
+                  value={phoneMask.displayValue}
+                  onChange={(e) => phoneMask.setDisplayValue(e.target.value)}
                   placeholder="(62) 99999-9999"
                 />
               </div>
 
               <div className="space-y-2">
                 <Label>E-mail <span className="text-xs text-muted-foreground">(recomendado — reduz recusa no pagamento)</span></Label>
-                <Input 
+                <Input
                   type="email"
-                  value={email} 
-                  onChange={(e) => setEmail(e.target.value)} 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu@email.com"
                 />
               </div>
@@ -506,9 +587,9 @@ export default function LiveCheckout() {
 
               <div className="space-y-2">
                 <Label>CPF (obrigatório para Correios)</Label>
-                <Input 
-                  value={cpf.replace(/\D/g, "").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2")} 
-                  onChange={(e) => setCpf(e.target.value.replace(/\D/g, "").slice(0, 11))} 
+                <Input
+                  value={cpf.replace(/\D/g, "").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2")}
+                  onChange={(e) => setCpf(e.target.value.replace(/\D/g, "").slice(0, 11))}
                   placeholder="000.000.000-00" maxLength={14}
                 />
               </div>
@@ -684,8 +765,8 @@ export default function LiveCheckout() {
 
               <div className="flex gap-2 pt-4">
                 <Button variant="outline" onClick={() => setCurrentStep("delivery")}>Voltar</Button>
-                <Button 
-                  className="flex-1 bg-[#009ee3] hover:bg-[#007bbd]" 
+                <Button
+                  className="flex-1 bg-[#009ee3] hover:bg-[#007bbd]"
                   size="lg"
                   onClick={generatePayment}
                   disabled={isProcessing}
