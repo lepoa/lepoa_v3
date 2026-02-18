@@ -1,14 +1,14 @@
 import { useState } from "react";
-import { 
-  User, 
-  Phone, 
-  Mail, 
-  MapPin, 
-  FileText, 
-  Edit2, 
-  Save, 
-  X, 
-  Loader2 
+import {
+  User,
+  Phone,
+  Mail,
+  MapPin,
+  FileText,
+  Edit2,
+  Save,
+  X,
+  Loader2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ interface CustomerDataCardProps {
     name: string | null;
     phone: string;
     email: string | null;
+    instagram: string | null;
     address_line: string | null;
     city: string | null;
     state: string | null;
@@ -49,6 +50,7 @@ export function CustomerDataCard({ customer, onUpdate }: CustomerDataCardProps) 
   const [formData, setFormData] = useState({
     name: customer.name || "",
     email: customer.email || "",
+    instagram: customer.instagram || "",
     document: customer.document?.replace(/\D/g, "") || "",
   });
 
@@ -56,7 +58,7 @@ export function CustomerDataCard({ customer, onUpdate }: CustomerDataCardProps) 
     setIsSaving(true);
     try {
       const cleanCpf = formData.document.replace(/\D/g, "");
-      
+
       // Validate CPF if provided
       if (cleanCpf && cleanCpf.length !== 11) {
         toast.error("CPF deve ter 11 dígitos");
@@ -69,6 +71,7 @@ export function CustomerDataCard({ customer, onUpdate }: CustomerDataCardProps) 
         .update({
           name: formData.name || null,
           email: formData.email || null,
+          instagram: formData.instagram || null,
           document: cleanCpf || null,
         })
         .eq("id", customer.id);
@@ -107,6 +110,7 @@ export function CustomerDataCard({ customer, onUpdate }: CustomerDataCardProps) 
     setFormData({
       name: customer.name || "",
       email: customer.email || "",
+      instagram: customer.instagram || "",
       document: customer.document?.replace(/\D/g, "") || "",
     });
     setIsEditing(false);
@@ -180,6 +184,15 @@ export function CustomerDataCard({ customer, onUpdate }: CustomerDataCardProps) 
                 <p className="text-xs text-amber-600">CPF deve ter 11 dígitos ({formData.document.length}/11)</p>
               )}
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-instagram">Instagram</Label>
+              <Input
+                id="edit-instagram"
+                value={formData.instagram}
+                onChange={(e) => setFormData({ ...formData, instagram: e.target.value })}
+                placeholder="@usuario"
+              />
+            </div>
           </div>
         ) : (
           /* View Mode */
@@ -214,6 +227,13 @@ export function CustomerDataCard({ customer, onUpdate }: CustomerDataCardProps) 
               ) : (
                 <span className="text-sm text-muted-foreground italic">Não informado</span>
               )}
+            </div>
+
+            {/* Instagram */}
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Instagram:</span>
+              <span className="text-sm">{customer.instagram || <span className="text-muted-foreground italic">Não informado</span>}</span>
             </div>
 
             {/* Address (read-only here, editable in IncompleteRegistration) */}

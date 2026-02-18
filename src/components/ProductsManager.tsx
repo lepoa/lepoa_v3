@@ -408,11 +408,19 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
                       if (productAvailableStock && productAvailableStock.size > 0) {
                         // Use the view data (shows available = on_hand - committed - reserved)
                         const entries: [string, AvailableStockEntry][] = Array.from(productAvailableStock.entries());
-                        const sortedBySize = sortSizes(entries.map(([size, entry]) => [size, entry.available] as [string, number]));
-                        const withAvailable = sortedBySize.filter(([, qty]) => qty > 0);
-                        const withoutAvailable = sortedBySize.filter(([, qty]) => qty <= 0);
 
-                        if (sortedBySize.length === 0) {
+                        // Filter to show anything that has physical stock (on_hand > 0) OR is available
+                        // This ensures items that are fully reserved (available=0 but on_hand>0) are still shown
+                        const withPhysicalStock = entries.filter(([, entry]) => entry.on_hand > 0 || entry.available > 0);
+
+                        // Sort by size
+                        const sortedStock = sortSizes(withPhysicalStock.map(([size]) => [size, 0] as [string, number]))
+                          .map(([size]) => {
+                            const entry = productAvailableStock.get(size);
+                            return { size, entry };
+                          });
+
+                        if (sortedStock.length === 0) {
                           return (
                             <span className="text-xs text-amber-600">
                               ⚠️ Grade não definida
@@ -420,12 +428,14 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
                           );
                         }
 
-                        if (withAvailable.length === 0) {
+                        // If all items are effectively "out of stock" (available <= 0) but exist
+                        const allUnavailable = sortedStock.every(({ entry }) => (entry?.available || 0) <= 0);
+
+                        if (allUnavailable) {
                           return (
                             <>
                               <span className="text-xs text-amber-600 mr-1">⚠️ Esgotado</span>
-                              {withoutAvailable.slice(0, 4).map(([size]) => {
-                                const entry = productAvailableStock.get(size);
+                              {sortedStock.slice(0, 5).map(({ size, entry }) => {
                                 const stockEntry = entry ? {
                                   stock: entry.on_hand,
                                   reserved: entry.reserved,
@@ -441,24 +451,23 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
                                   />
                                 );
                               })}
-                              {withoutAvailable.length > 4 && (
-                                <span className="text-xs text-muted-foreground">+{withoutAvailable.length - 4}</span>
+                              {sortedStock.length > 5 && (
+                                <span className="text-xs text-muted-foreground">+{sortedStock.length - 5}</span>
                               )}
                             </>
                           );
                         }
 
+                        // Normal display (mixed available and unavailable)
                         return (
                           <>
-                            {withAvailable.slice(0, 5).map(([size]) => {
-                              const entry = productAvailableStock.get(size);
+                            {sortedStock.slice(0, 6).map(({ size, entry }) => {
                               const reserved = entry?.reserved || 0;
                               const committed = entry?.committed || 0;
                               const hasReservations = reserved > 0 || committed > 0;
 
-                              // Map on_hand to stock for StockBreakdownTooltip
                               const stockEntry = entry ? {
-                                stock: entry.on_hand,  // on_hand renamed to stock in view
+                                stock: entry.on_hand,
                                 reserved: entry.reserved,
                                 committed: entry.committed,
                                 available: entry.available
@@ -473,9 +482,9 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
                                 />
                               );
                             })}
-                            {withAvailable.length > 5 && (
+                            {sortedStock.length > 6 && (
                               <span className="text-xs text-muted-foreground">
-                                +{withAvailable.length - 5}
+                                +{sortedStock.length - 6}
                               </span>
                             )}
                           </>
@@ -601,6 +610,7 @@ export function ProductsManager({ userId, initialFilter }: ProductsManagerProps)
 
       {/* Product Form Modal */}
       <ProductForm
+        key={formOpen ? "open" : "closed"}
         open={formOpen}
         onOpenChange={setFormOpen}
         product={editingProduct ? {

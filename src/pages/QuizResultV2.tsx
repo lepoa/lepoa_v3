@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { useCart } from "@/contexts/CartContext";
 import { useConfetti } from "@/hooks/useConfetti";
 import { useAuth } from "@/hooks/useAuth";
+import { useLoyalty } from "@/hooks/useLoyalty";
 
 interface Product {
   id: string;
@@ -52,7 +53,8 @@ const QuizResultV2 = () => {
   const { user } = useAuth();
   const { addItem } = useCart();
   const { fireConfetti } = useConfetti();
-  
+  const { loyalty } = useLoyalty();
+
   const [customer, setCustomer] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [looks, setLooks] = useState<Look[]>([]);
@@ -68,10 +70,14 @@ const QuizResultV2 = () => {
   const showCelebration = (location.state as any)?.showCelebration;
   const stateProfile = (location.state as any)?.profile as StyleProfileV2 | undefined;
 
-  // Initialize display points from state
+  // Initialize display points from state or loyalty
   useEffect(() => {
-    setDisplayPoints(totalPoints);
-  }, [totalPoints]);
+    if (totalPoints > 0) {
+      setDisplayPoints(totalPoints);
+    } else if (loyalty?.currentPoints) {
+      setDisplayPoints(loyalty.currentPoints);
+    }
+  }, [totalPoints, loyalty]);
 
   // Fire celebration on initial load
   useEffect(() => {
@@ -83,9 +89,9 @@ const QuizResultV2 = () => {
     }
   }, [showCelebration, hasCelebrated, isLoading, fireConfetti]);
 
-  const profile = customer?.style_title 
+  const profile = customer?.style_title
     ? Object.values(styleProfilesV2).find(p => p.title === customer.style_title)
-    : aiAnalysis?.styleId 
+    : aiAnalysis?.styleId
       ? styleProfilesV2[aiAnalysis.styleId]
       : stateProfile || null;
 
@@ -97,7 +103,7 @@ const QuizResultV2 = () => {
     "Seu olhar é atraído por cortes impecáveis",
     "Você sabe o poder de uma boa escolha"
   ];
-  
+
   const valorizes = aiAnalysis?.valorizes || profile?.valorizes || ["estilo", "conforto", "versatilidade"];
 
   useEffect(() => {
@@ -129,33 +135,33 @@ const QuizResultV2 = () => {
         const matchedProducts = (allProducts || []).filter((product: any) => {
           const stockBySize = product.stock_by_size as Record<string, number> | null;
           if (!stockBySize) return false;
-          
+
           const hasUniversalStock = (stockBySize["UN"] || 0) > 0;
           if (hasUniversalStock) return true;
-          
+
           if (sizeLetter) {
             const letterStock = stockBySize[sizeLetter] || 0;
             if (letterStock > 0) return true;
           }
-          
+
           if (sizeNumber) {
             const numberStock = stockBySize[sizeNumber] || 0;
             if (numberStock > 0) return true;
           }
-          
+
           if (!sizeLetter && !sizeNumber) {
             return Object.values(stockBySize).some(qty => (qty as number) > 0);
           }
-          
+
           return false;
         });
 
         const tags = aiAnalysis?.tags || profile?.tags || [];
         const scoredProducts = matchedProducts.map(product => {
           let score = 0;
-          
+
           if (product.style && tags.includes(product.style)) score += 3;
-          
+
           const productTags = product.tags || [];
           tags.forEach(tag => {
             if (productTags.some(pt => pt.toLowerCase().includes(tag.toLowerCase()))) {
@@ -194,13 +200,13 @@ const QuizResultV2 = () => {
 
     const lookNames = aiAnalysis?.keyPieces?.slice(0, 3).map((piece, i) => `Look ${piece}`) || [
       "Look Principal",
-      "Look Alternativo", 
+      "Look Alternativo",
       "Look Versátil",
     ];
 
     for (let i = 0; i < 3 && usedProducts.size < products.length; i++) {
       const lookProducts: Product[] = [];
-      
+
       for (const product of products) {
         if (!usedProducts.has(product.id) && lookProducts.length < 3) {
           lookProducts.push(product);
@@ -225,16 +231,16 @@ const QuizResultV2 = () => {
   const handleAddToCart = (product: Product) => {
     const sizeLetter = stateSizeLetter || customer?.size_letter;
     const sizeNumber = stateSizeNumber || customer?.size_number;
-    
+
     const stockBySize = (product as any).stock_by_size as Record<string, number> | null;
     let sizeToAdd: string | null = null;
-    
+
     if (stockBySize) {
       if ((stockBySize["UN"] || 0) > 0) sizeToAdd = "UN";
       else if (sizeLetter && (stockBySize[sizeLetter] || 0) > 0) sizeToAdd = sizeLetter;
       else if (sizeNumber && (stockBySize[sizeNumber] || 0) > 0) sizeToAdd = sizeNumber;
     }
-    
+
     if (!sizeToAdd) {
       toast.error("Tamanho não disponível");
       return;
@@ -297,7 +303,7 @@ Quero ver mais looks que combinam com meu estilo! ✨`;
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       {/* Points & Level Banner */}
       <div className="bg-gradient-to-r from-amber-500/20 via-accent/20 to-amber-500/20 border-b border-amber-500/30">
         <div className="container mx-auto px-4 py-3">
@@ -322,7 +328,7 @@ Quero ver mais looks que combinam com meu estilo! ✨`;
             <span className="text-6xl mb-4 block animate-float">
               {profile?.emoji || "✨"}
             </span>
-            
+
             {/* Main Style Title */}
             <p className="text-sm text-accent font-medium mb-2 animate-slide-in-up" style={{ animationDelay: "100ms" }}>
               Seu estilo predominante é:
@@ -415,7 +421,7 @@ Quero ver mais looks que combinam com meu estilo! ✨`;
             <p className="text-center text-muted-foreground mb-8">
               Todas as peças têm estoque no seu tamanho 🎉
             </p>
-            
+
             <div className="space-y-8 max-w-5xl mx-auto">
               {looks.map((look, index) => (
                 <div key={index} className="bg-card rounded-2xl p-5 border border-border">
@@ -486,7 +492,7 @@ Quero ver mais looks que combinam com meu estilo! ✨`;
                 </Button>
               </Link>
             </div>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
               {products.slice(0, 8).map((product) => (
                 <Link key={product.id} to={`/produto/${product.id}`}>
@@ -525,8 +531,8 @@ Quero ver mais looks que combinam com meu estilo! ✨`;
               Complete missões para refinar suas sugestões e subir de nível
             </p>
           </div>
-          
-          <MissionsList 
+
+          <MissionsList
             completedMissions={[]}
             currentPoints={displayPoints}
             currentLevel={level}

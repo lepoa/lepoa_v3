@@ -29,22 +29,23 @@ const Auth = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isLoading: authLoading } = useAuth();
-  
+
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [instagramHandle, setInstagramHandle] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  
-  const { 
-    displayValue: whatsappMasked, 
-    handleChange: handleWhatsappChangeEvent, 
+
+  const {
+    displayValue: whatsappMasked,
+    handleChange: handleWhatsappChangeEvent,
     getNormalizedValue: getWhatsappNormalized,
-    isValid: whatsappIsValid 
+    isValid: whatsappIsValid
   } = usePhoneMask("");
-  
+
   // Get redirect URL from query params or state
   const searchParams = new URLSearchParams(location.search);
   const stateData = location.state as { redirectTo?: string; returnTo?: string; from?: string; message?: string } | null;
@@ -60,7 +61,7 @@ const Auth = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const result = loginSchema.safeParse({ email, password });
     if (!result.success) {
       toast.error(result.error.errors[0].message);
@@ -91,7 +92,7 @@ const Auth = () => {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const result = signupSchema.safeParse({ name, email, password, whatsapp: whatsappMasked });
     if (!result.success || !whatsappIsValid) {
       toast.error(!whatsappIsValid ? "WhatsApp inválido" : result.error.errors[0].message);
@@ -103,7 +104,9 @@ const Auth = () => {
     try {
       const redirectUrl = `${window.location.origin}${redirectTo}`;
       const normalizedWhatsapp = getWhatsappNormalized();
-      
+      const normalizedInstagram = instagramHandle
+        .replace(/@/g, "").replace(/\s/g, "").toLowerCase().trim() || null;
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -112,10 +115,11 @@ const Auth = () => {
           data: {
             name,
             whatsapp: normalizedWhatsapp,
+            instagram_handle: normalizedInstagram,
           },
         },
       });
-      
+
       if (error) throw error;
 
       // Update profile with name and WhatsApp
@@ -125,6 +129,7 @@ const Auth = () => {
           .update({
             name,
             whatsapp: normalizedWhatsapp,
+            instagram_handle: normalizedInstagram,
           })
           .eq("user_id", data.user.id);
 
@@ -175,13 +180,13 @@ const Auth = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container mx-auto px-4 py-8 max-w-md">
         <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </Link>
-        
+
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-accent/10 mb-4">
             <Sparkles className="h-8 w-8 text-accent" />
@@ -190,9 +195,9 @@ const Auth = () => {
             {isSignUp ? "Criar sua conta" : "Entrar"}
           </h1>
           <p className="text-muted-foreground text-sm">
-            {customMessage 
+            {customMessage
               ? customMessage
-              : isSignUp 
+              : isSignUp
                 ? "Crie sua conta para fazer o quiz e receber looks personalizados"
                 : "Entre para acessar seus looks e pedidos"}
           </p>
@@ -250,7 +255,23 @@ const Auth = () => {
             </div>
           )}
 
-        <div className={isSignUp ? "animate-slide-in-up" : ""} style={isSignUp ? { animationDelay: "150ms" } : {}}>
+          {isSignUp && (
+            <div className="animate-slide-in-up" style={{ animationDelay: "120ms" }}>
+              <Label htmlFor="instagram">Instagram (opcional)</Label>
+              <Input
+                id="instagram"
+                type="text"
+                placeholder="@seuinstagram"
+                value={instagramHandle}
+                onChange={(e) => setInstagramHandle(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Se você compra nas nossas lives, coloque seu @ para ver seus pedidos aqui
+              </p>
+            </div>
+          )}
+
+          <div className={isSignUp ? "animate-slide-in-up" : ""} style={isSignUp ? { animationDelay: "150ms" } : {}}>
             <Label htmlFor="password">Senha</Label>
             <div className="relative">
               <Input
@@ -281,9 +302,9 @@ const Auth = () => {
             )}
           </div>
 
-          <Button 
-            type="submit" 
-            className="w-full gap-2 transition-all hover:scale-[1.02]" 
+          <Button
+            type="submit"
+            className="w-full gap-2 transition-all hover:scale-[1.02]"
             disabled={isLoading}
           >
             {isLoading ? (
@@ -347,8 +368,8 @@ const Auth = () => {
             onClick={() => setIsSignUp(!isSignUp)}
             className="text-sm text-accent hover:underline"
           >
-            {isSignUp 
-              ? "Já tem uma conta? Fazer login" 
+            {isSignUp
+              ? "Já tem uma conta? Fazer login"
               : "Não tem conta? Criar agora"}
           </button>
         </div>

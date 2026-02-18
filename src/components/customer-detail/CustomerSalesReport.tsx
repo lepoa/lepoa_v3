@@ -66,7 +66,7 @@ export function CustomerSalesReport({
     try {
       // 1. Load regular orders
       const normalizedPhone = customerPhone?.replace(/\D/g, "");
-      
+
       // By customer_id
       const { data: ordersById } = await supabase
         .from("orders")
@@ -116,11 +116,16 @@ export function CustomerSalesReport({
 
         ordersByPhone = (legacyOrders || []).filter((order) => {
           const orderPhone = order.customer_phone?.replace(/\D/g, "");
-          return (
-            orderPhone === normalizedPhone ||
-            orderPhone?.endsWith(normalizedPhone) ||
-            normalizedPhone?.endsWith(orderPhone)
-          );
+          if (!orderPhone || !normalizedPhone) return false;
+
+          // Basic exact match
+          if (orderPhone === normalizedPhone) return true;
+
+          // Match considering 55 prefix (Brazil)
+          const strip55 = (p: string) => p.startsWith('55') ? p.slice(2) : p;
+          if (strip55(orderPhone) === strip55(normalizedPhone)) return true;
+
+          return false;
         });
       }
 

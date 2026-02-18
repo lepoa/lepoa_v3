@@ -1,3 +1,5 @@
+import { MissionQuestion } from "./missionsData";
+
 export interface Mission {
   id: string;
   title: string;

@@ -114,6 +114,8 @@ interface OrderItem {
 }
 
 const statusConfig: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  aberto: { label: "Sacola Aberta", icon: Clock, color: "bg-blue-50 text-blue-600 border-blue-200" },
+  aguardando_retorno: { label: "Aguardando Retorno", icon: Clock, color: "bg-orange-50 text-orange-600 border-orange-200" },
   pendente: { label: "Pendente", icon: Clock, color: "bg-amber-100 text-amber-800" },
   aguardando_pagamento: { label: "Aguardando Pagamento", icon: CreditCard, color: "bg-orange-100 text-orange-800" },
   pago: { label: "Pago", icon: CheckCircle, color: "bg-green-100 text-green-800" },
@@ -124,10 +126,13 @@ const statusConfig: Record<string, { label: string; icon: React.ElementType; col
   cancelado: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800" },
   pagamento_rejeitado: { label: "Pagamento Rejeitado", icon: X, color: "bg-red-100 text-red-800" },
   reembolsado: { label: "Reembolsado", icon: Clock, color: "bg-gray-100 text-gray-800" },
+  abandonado: { label: "Abandonado", icon: X, color: "bg-gray-100 text-gray-400" },
   aguardando_pagamento_frete: { label: "Aguardando Pag. Frete", icon: CreditCard, color: "bg-yellow-100 text-yellow-800" },
 };
 
 const statusOptions = [
+  { value: "aberto", label: "Sacola Aberta" },
+  { value: "aguardando_retorno", label: "Aguardando Retorno" },
   { value: "pendente", label: "Pendente" },
   { value: "aguardando_pagamento", label: "Aguardando Pagamento" },
   { value: "pago", label: "Pago" },
@@ -293,7 +298,7 @@ export function OrdersManager({ initialFilter }: OrdersManagerProps) {
           live_event:live_events(titulo)
         `)
         .is("order_id", null)
-        .neq("status", "aberto") // Only show finalized/checkout carts
+        // .neq("status", "aberto") // Removed to allow active carts to be seen in the manager
         .neq("status", "abandonado")
         .order("created_at", { ascending: false });
 
@@ -306,7 +311,7 @@ export function OrdersManager({ initialFilter }: OrdersManagerProps) {
       const mappedLiveOrders: Order[] = (liveCarts || []).map((cart: any) => ({
         id: cart.id,
         created_at: cart.created_at,
-        status: cart.status,
+        status: cart.operational_status || cart.status,
         total: cart.total,
         customer_name: cart.live_customer?.nome || cart.live_customer?.instagram_handle || "Cliente Live",
         customer_phone: cart.live_customer?.whatsapp || "",
@@ -355,6 +360,14 @@ export function OrdersManager({ initialFilter }: OrdersManagerProps) {
   // Load pending order IDs for special filters
   const loadPendingOrderIds = async () => {
     if (!specialFilter) return;
+
+    // Handle "pendencias" (all types)
+    if (specialFilter === "pendencias") {
+      const result = await getOperationalPendingOrders({});
+      const ids = new Set(result.allOrders.map(o => o.id));
+      setPendingOrderIds(ids);
+      return;
+    }
 
     const pendingType = specialFilterToPendingType[specialFilter];
     if (!pendingType) return;
@@ -950,10 +963,10 @@ Qualquer dúvida estamos à disposição! 💕`;
                         {expiryInfo && (
                           <Badge
                             className={`border-0 gap-1 text-[10px] px-1.5 py-0 ${expiryInfo.expired
-                                ? "bg-destructive text-destructive-foreground"
-                                : expiryInfo.urgent
-                                  ? "bg-amber-100 text-amber-700 animate-pulse-soft"
-                                  : "bg-secondary text-muted-foreground"
+                              ? "bg-destructive text-destructive-foreground"
+                              : expiryInfo.urgent
+                                ? "bg-amber-100 text-amber-700 animate-pulse-soft"
+                                : "bg-secondary text-muted-foreground"
                               }`}
                           >
                             <Timer className="h-2.5 w-2.5" />
@@ -1008,10 +1021,10 @@ Qualquer dúvida estamos à disposição! 💕`;
                         {expiryInfo && (
                           <Badge
                             className={`border-0 gap-1 text-[10px] px-1.5 ${expiryInfo.expired
-                                ? "bg-destructive text-destructive-foreground"
-                                : expiryInfo.urgent
-                                  ? "bg-amber-100 text-amber-700 animate-pulse-soft"
-                                  : "bg-secondary text-muted-foreground"
+                              ? "bg-destructive text-destructive-foreground"
+                              : expiryInfo.urgent
+                                ? "bg-amber-100 text-amber-700 animate-pulse-soft"
+                                : "bg-secondary text-muted-foreground"
                               }`}
                           >
                             <Timer className="h-2.5 w-2.5" />

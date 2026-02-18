@@ -54,11 +54,11 @@ export default function MeusPedidos() {
       if (regularError) throw regularError;
 
       // 2. Fetch live shop orders (live_carts linked to user)
-      const { data: liveOrders, error: liveError } = await supabase
-        .from("live_carts")
-        .select("id, created_at, status, total, tracking_code, items:live_cart_items(id)")
+      // Including ALL statuses so the user can see orders as soon as they are reserved
+      const { data: liveOrders, error: liveError } = await (supabase
+        .from("live_carts") as any)
+        .select("id, created_at, status, total")
         .eq("user_id", user.id)
-        .in("status", ["pago", "enviado", "entregue", "aguardando_pagamento", "separacao"]) // filter relevant statuses
         .order("created_at", { ascending: false });
 
       if (liveError && liveError.code !== "PGRST100") { // ignore if column doesn't exist yet (graceful degradation)
@@ -83,8 +83,8 @@ export default function MeusPedidos() {
         status: order.status,
         total: order.total,
         customer_name: user?.user_metadata?.name || "Cliente",
-        tracking_code: order.tracking_code,
-        items_count: order.items?.length || 0,
+        tracking_code: null, // Default null since we removed it
+        items_count: 1,
         type: 'live' as const
       }));
 
@@ -137,7 +137,9 @@ export default function MeusPedidos() {
       <Header />
 
       <main className="container mx-auto px-4 py-8 max-w-2xl">
-        <h1 className="font-serif text-2xl mb-6">Meus Pedidos</h1>
+        <h1 className="font-serif text-2xl mb-6">Meus Pedidos e Lives</h1>
+
+
 
         {isLoading ? (
           <div className="space-y-4">

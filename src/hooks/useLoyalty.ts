@@ -3,12 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 
 // Tier configuration - Rolling 12 months
-export const LOYALTY_TIERS = {
-  poa: { name: "Poá", minPoints: 0, maxPoints: 999, multiplier: 1.0 },
-  classica: { name: "Clássica", minPoints: 1000, maxPoints: 2999, multiplier: 1.1 },
-  icone: { name: "Ícone", minPoints: 3000, maxPoints: 5999, multiplier: 1.2 },
-  poa_black: { name: "Poá Black", minPoints: 6000, maxPoints: Infinity, multiplier: 1.3 },
-} as const;
+import { LOYALTY_TIERS, LoyaltyTier, TIER_ORDER } from "@/lib/loyaltyConfig";
+
+// Tier configuration - Imported from centralized config
+export { LOYALTY_TIERS };
 
 // Redemption discount tiers
 export const REDEMPTION_DISCOUNTS = [
@@ -19,8 +17,6 @@ export const REDEMPTION_DISCOUNTS = [
 
 // Redemption limit: max 20% of order total
 export const MAX_REDEMPTION_PERCENT = 0.20;
-
-export type LoyaltyTier = keyof typeof LOYALTY_TIERS;
 
 export interface LoyaltyData {
   id: string;
@@ -108,10 +104,9 @@ export function useLoyalty() {
 
   // Get next tier
   const getNextTier = useCallback((currentTier: LoyaltyTier): LoyaltyTier | null => {
-    const tiers: LoyaltyTier[] = ["poa", "classica", "icone", "poa_black"];
-    const currentIndex = tiers.indexOf(currentTier);
-    if (currentIndex < tiers.length - 1) {
-      return tiers[currentIndex + 1];
+    const currentIndex = TIER_ORDER.indexOf(currentTier);
+    if (currentIndex < TIER_ORDER.length - 1) {
+      return TIER_ORDER[currentIndex + 1];
     }
     return null;
   }, []);
@@ -123,7 +118,7 @@ export function useLoyalty() {
 
     const currentTierInfo = LOYALTY_TIERS[currentTier];
     const nextTierInfo = LOYALTY_TIERS[nextTier];
-    
+
     const pointsInTier = annualPoints - currentTierInfo.minPoints;
     const tierRange = nextTierInfo.minPoints - currentTierInfo.minPoints;
     const progress = Math.min((pointsInTier / tierRange) * 100, 100);
@@ -312,21 +307,21 @@ export function useLoyalty() {
   // Check if reward is redeemable
   const canRedeemReward = useCallback((reward: LoyaltyReward) => {
     if (!loyalty) return { canRedeem: false, reason: "Faça login para resgatar" };
-    
+
     // Check points
     if (loyalty.currentPoints < reward.pointsCost) {
-      return { 
-        canRedeem: false, 
-        reason: `Faltam ${reward.pointsCost - loyalty.currentPoints} pontos` 
+      return {
+        canRedeem: false,
+        reason: `Faltam ${reward.pointsCost - loyalty.currentPoints} pontos`
       };
     }
 
     // Check tier
-    const tierOrder: LoyaltyTier[] = ["poa", "classica", "icone", "poa_black"];
+    const tierOrder: LoyaltyTier[] = ["poa", "poa_gold", "poa_platinum", "poa_black"];
     if (tierOrder.indexOf(loyalty.currentTier) < tierOrder.indexOf(reward.minTier)) {
-      return { 
-        canRedeem: false, 
-        reason: `Necessário nível ${LOYALTY_TIERS[reward.minTier].name}` 
+      return {
+        canRedeem: false,
+        reason: `Necessário nível ${LOYALTY_TIERS[reward.minTier].name}`
       };
     }
 
@@ -395,7 +390,7 @@ export function useLoyalty() {
       // Update loyalty balance
       const { error: updateError } = await supabase
         .from("customer_loyalty")
-        .update({ 
+        .update({
           current_points: loyalty.currentPoints - reward.pointsCost,
           updated_at: new Date().toISOString()
         })
@@ -419,10 +414,10 @@ export function useLoyalty() {
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
     return transactions
-      .filter(t => 
-        t.points > 0 && 
-        !t.expired && 
-        t.expiresAt && 
+      .filter(t =>
+        t.points > 0 &&
+        !t.expired &&
+        t.expiresAt &&
         new Date(t.expiresAt) <= thirtyDaysFromNow
       )
       .reduce((sum, t) => sum + t.points, 0);

@@ -70,10 +70,10 @@ const Checkout = () => {
   const { items, total: cartSubtotal, clearCart } = useCart();
   const couponHook = useCoupon();
   const { user, isLoading: authLoading } = useAuth();
-  
+
   // Steps
   const [currentStep, setCurrentStep] = useState<CheckoutStep>("profile");
-  
+
   // Profile form
   const [fullName, setFullName] = useState("");
   const phoneMask = usePhoneMask("");
@@ -88,24 +88,24 @@ const Checkout = () => {
     reference: "",
     document: "",
   });
-  
+
   // Delivery
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("motoboy");
   const [shippingQuotes, setShippingQuotes] = useState<ShippingQuote[]>([]);
   const [selectedShipping, setSelectedShipping] = useState<ShippingQuote | null>(null);
   const [isCalculatingShipping, setIsCalculatingShipping] = useState(false);
   const [shippingZipCode, setShippingZipCode] = useState("");
-  
+
   // Correios shipping - LOCKED address data after quote
   const [shippingAddressData, setShippingAddressData] = useState<AddressData | null>(null);
   const [shippingAddressId, setShippingAddressId] = useState<string | null>(null);
   const [quotedZipCode, setQuotedZipCode] = useState(""); // CEP used for the shipping calculation
-  
+
   // Motoboy specific
   const [motoboyAddressConfirmed, setMotoboyAddressConfirmed] = useState(false);
   const [deliveryPeriod, setDeliveryPeriod] = useState<DeliveryPeriod>("qualquer");
   const [deliveryNotes, setDeliveryNotes] = useState("");
-  
+
   // States
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [finalTotal, setFinalTotal] = useState<number | null>(null);
@@ -140,20 +140,20 @@ const Checkout = () => {
       const addressValid = (() => {
         if (!shippingAddressData) return false;
         if (!quotedZipCode) return false;
-        
+
         const addressZip = shippingAddressData.zipCode.replace(/\D/g, "");
         const quotedZip = quotedZipCode.replace(/\D/g, "");
-        
+
         const hasRequiredFields = !!(
           shippingAddressData.street &&
           shippingAddressData.city &&
           shippingAddressData.state &&
           addressZip.length === 8
         );
-        
+
         return hasRequiredFields && addressZip === quotedZip;
       })();
-      
+
       if (!addressValid) {
         toast.error("Endereço de entrega inválido. Selecione ou cadastre um endereço.");
         setCurrentStep("delivery");
@@ -163,7 +163,7 @@ const Checkout = () => {
 
   // Get product IDs for stock check
   const productIds = useMemo(() => [...new Set(items.map(i => i.productId))], [items]);
-  
+
   // Use centralized stock hook that considers live reservations
   const { getAvailable, isLoading: stockViewLoading } = useProductAvailableStock(
     productIds.length > 0 ? productIds : undefined
@@ -177,7 +177,7 @@ const Checkout = () => {
         .from("product_catalog")
         .select("id, stock_by_size, color, image_url, images, main_image_index, weight_kg, length_cm, width_cm, height_cm")
         .in("id", productIds);
-      
+
       if (data) {
         const stockMap: Record<string, ProductStock> = {};
         data.forEach(p => { stockMap[p.id] = p; });
@@ -190,7 +190,7 @@ const Checkout = () => {
   // Validate stock using centralized view (includes live reservations)
   useEffect(() => {
     if (stockViewLoading || items.length === 0) return;
-    
+
     const errors: string[] = [];
     items.forEach(item => {
       const available = getAvailable(item.productId, item.size);
@@ -212,12 +212,12 @@ const Checkout = () => {
       .select("full_name, name, whatsapp, address_line, city, state, zip_code, address_reference, cpf, address")
       .eq("user_id", user.id)
       .maybeSingle();
-    
+
     if (data) {
       const name = data.full_name || data.name || "";
       setFullName(name);
       if (data.whatsapp) phoneMask.setDisplayValue(data.whatsapp);
-      
+
       // Parse address into structured format
       const parsedAddress = parseAddressLine(
         data.address_line,
@@ -227,15 +227,15 @@ const Checkout = () => {
         data.address_reference
       );
       setAddressData(parsedAddress);
-      
+
       if (data.zip_code) {
         setShippingZipCode(data.zip_code.replace(/\D/g, ""));
       }
-      
+
       // Check if profile is complete
       const hasRequiredFields = !!(name && data.whatsapp);
       setProfileComplete(hasRequiredFields);
-      
+
       // Skip profile step if complete
       if (hasRequiredFields) {
         setCurrentStep("delivery");
@@ -280,7 +280,7 @@ const Checkout = () => {
         .eq("user_id", user.id);
 
       if (error) throw error;
-      
+
       setProfileComplete(true);
       setCurrentStep("delivery");
       toast.success("Dados salvos!");
@@ -295,12 +295,12 @@ const Checkout = () => {
   // Calculate total cart weight
   const getTotalCartWeight = (): number => {
     let totalWeight = 0;
-    
+
     items.forEach(item => {
       const productWeight = productStocks[item.productId]?.weight_kg || DEFAULT_WEIGHT_KG;
       totalWeight += productWeight * item.quantity;
     });
-    
+
     return Math.round(totalWeight * 100) / 100; // Round to 2 decimal places
   };
 
@@ -309,20 +309,20 @@ const Checkout = () => {
     let maxLength = DEFAULT_DIMENSIONS.length;
     let maxWidth = DEFAULT_DIMENSIONS.width;
     let totalHeight = 0;
-    
+
     items.forEach(item => {
       const product = productStocks[item.productId];
       const itemLength = product?.length_cm || DEFAULT_DIMENSIONS.length;
       const itemWidth = product?.width_cm || DEFAULT_DIMENSIONS.width;
       const itemHeight = product?.height_cm || DEFAULT_DIMENSIONS.height;
-      
+
       // Use the largest length and width
       maxLength = Math.max(maxLength, itemLength);
       maxWidth = Math.max(maxWidth, itemWidth);
       // Sum heights for stacked items
       totalHeight += itemHeight * item.quantity;
     });
-    
+
     // Ensure minimum dimensions and cap at reasonable max
     return {
       length: Math.min(Math.max(maxLength, 11), 100),
@@ -348,11 +348,11 @@ const Checkout = () => {
     try {
       const totalWeight = getTotalCartWeight();
       const dimensions = getPackageDimensions();
-      
+
       console.log(`Shipping calculation: weight=${totalWeight}kg, dimensions=${dimensions.length}x${dimensions.width}x${dimensions.height}cm`);
-      
+
       const { data, error } = await supabase.functions.invoke('calculate-shipping', {
-        body: { 
+        body: {
           toZipCode: cleanZip,
           weight: totalWeight,
           length: dimensions.length,
@@ -372,9 +372,29 @@ const Checkout = () => {
       } else {
         toast.error(data.error || "Não foi possível calcular o frete");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Shipping calculation error:", error);
-      toast.error("Erro ao calcular frete");
+
+      let errorMessage = "Erro ao calcular frete";
+
+      // Try to extract detailed error from Edge Function response
+      if (error?.context?.status === 500 || error?.context?.status === 400) {
+        try {
+          // The error object from supabase-js might have the body text or json
+          const body = await error.context.json();
+          if (body?.error) {
+            errorMessage = body.error;
+            if (body.details) errorMessage += `: ${body.details}`;
+          }
+        } catch (e) {
+          // If parsing fails, use default
+          console.error("Failed to parse error body:", e);
+        }
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+
+      toast.error(errorMessage);
     } finally {
       setIsCalculatingShipping(false);
     }
@@ -403,10 +423,10 @@ const Checkout = () => {
   const isShippingAddressValid = (): boolean => {
     if (!shippingAddressData) return false;
     if (!quotedZipCode) return false;
-    
+
     const addressZip = shippingAddressData.zipCode.replace(/\D/g, "");
     const quotedZip = quotedZipCode.replace(/\D/g, "");
-    
+
     // Check if address has minimum required fields
     const hasRequiredFields = !!(
       shippingAddressData.street &&
@@ -414,10 +434,10 @@ const Checkout = () => {
       shippingAddressData.state &&
       addressZip.length === 8
     );
-    
+
     // CEP must match quoted CEP
     const zipMatches = addressZip === quotedZip;
-    
+
     return hasRequiredFields && zipMatches;
   };
 
@@ -426,22 +446,22 @@ const Checkout = () => {
     if (!selectedShipping) return "Calcule o frete primeiro";
     if (!quotedZipCode) return "CEP não cotado";
     if (!shippingAddressData) return "Selecione ou cadastre um endereço";
-    
+
     const addressZip = shippingAddressData.zipCode.replace(/\D/g, "");
     const quotedZip = quotedZipCode.replace(/\D/g, "");
-    
+
     if (addressZip !== quotedZip) {
       return `O frete foi calculado para o CEP ${quotedZip.replace(/(\d{5})(\d{3})/, "$1-$2")}, mas o endereço selecionado é do CEP ${addressZip.replace(/(\d{5})(\d{3})/, "$1-$2")}. Selecione ou cadastre o endereço correto.`;
     }
-    
+
     if (!shippingAddressData.street || !shippingAddressData.city || !shippingAddressData.state) {
       return "Complete todos os campos obrigatórios do endereço";
     }
-    
+
     if (!isCpfValidForShipping()) {
       return "CPF obrigatório para gerar etiqueta dos Correios (11 dígitos)";
     }
-    
+
     return null;
   };
 
@@ -496,12 +516,12 @@ const Checkout = () => {
       const deliveryFee = getDeliveryFee();
       const discountAmount = couponHook.discountAmount;
       const totalWithShipping = cartSubtotal - discountAmount + deliveryFee;
-      
+
       // CRITICAL: Use the CORRECT address based on delivery method
       // For Correios: use shippingAddressData (locked to quoted ZIP)
       // For others: use profile addressData
-      const effectiveAddress = deliveryMethod === "shipping" && shippingAddressData 
-        ? shippingAddressData 
+      const effectiveAddress = deliveryMethod === "shipping" && shippingAddressData
+        ? shippingAddressData
         : addressData;
 
       // Build full address line from components
@@ -526,7 +546,7 @@ const Checkout = () => {
       };
 
       // Format address for legacy field
-      const fullAddress = deliveryMethod === "pickup" 
+      const fullAddress = deliveryMethod === "pickup"
         ? "Retirada na loja"
         : `${fullAddressLine}, ${effectiveAddress.city} - ${effectiveAddress.state}, CEP ${effectiveAddress.zipCode}${effectiveAddress.reference ? ` (${effectiveAddress.reference})` : ''}`;
 
@@ -565,7 +585,7 @@ const Checkout = () => {
         const mainIndex = product?.main_image_index || 0;
         const productImage = product?.images?.[mainIndex] || product?.image_url || item.imageUrl || null;
         const itemSubtotal = item.price * item.quantity;
-        
+
         console.log("[CHECKOUT] Order item:", {
           product_id: item.productId,
           size: item.size,
@@ -575,7 +595,7 @@ const Checkout = () => {
           discount_percent: item.discountPercent,
           subtotal: itemSubtotal,
         });
-        
+
         return {
           order_id: order.id,
           product_id: item.productId,
@@ -600,7 +620,7 @@ const Checkout = () => {
       // Reserve stock immediately (committed_by_size) - idempotent
       const { data: reserveResult, error: reserveError } = await supabase
         .rpc("reserve_order_stock" as any, { p_order_id: order.id });
-      
+
       if (reserveError) {
         console.error("[CHECKOUT] Stock reservation failed:", reserveError);
         // Non-blocking: order was created, reservation can be retried
@@ -650,15 +670,15 @@ const Checkout = () => {
       // Save order ID and move to payment step
       setOrderId(order.id);
       setOrderNumber(order.id.slice(0, 8).toUpperCase());
-      
+
       // Capture the final total before clearing cart (cart clearing zeroes cartSubtotal)
       const computedTotal = cartSubtotal - couponHook.discountAmount + getDeliveryFee();
       setFinalTotal(computedTotal);
-      
+
       // CRITICAL: Clear cart immediately after order creation to prevent duplicates
       // This must happen BEFORE the payment step, not after MP redirect
       clearCart();
-      
+
       setCurrentStep("payment");
       toast.success("Pedido criado! Agora finalize o pagamento.");
     } catch (error) {
@@ -759,7 +779,7 @@ const Checkout = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container mx-auto px-4 py-8 max-w-lg">
         {/* Progress Steps */}
         <div className="flex items-center justify-center gap-1 sm:gap-2 mb-8">
@@ -834,7 +854,7 @@ const Checkout = () => {
 
               <div className="border-t pt-4 mt-4">
                 <p className="text-sm font-medium mb-3">Endereço (para entregas)</p>
-                
+
                 <AddressForm
                   value={addressData}
                   onChange={(data) => {
@@ -847,8 +867,8 @@ const Checkout = () => {
                 />
               </div>
 
-              <Button 
-                className="w-full mt-4" 
+              <Button
+                className="w-full mt-4"
                 onClick={saveProfile}
                 disabled={isSavingProfile || !fullName.trim() || !phoneMask.displayValue || !phoneMask.isValid}
               >
@@ -872,8 +892,8 @@ const Checkout = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <RadioGroup 
-                value={deliveryMethod} 
+              <RadioGroup
+                value={deliveryMethod}
                 onValueChange={(v) => {
                   setDeliveryMethod(v as DeliveryMethod);
                   if (v !== "shipping") {
@@ -967,8 +987,8 @@ const Checkout = () => {
                         onChange={(e) => setShippingZipCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
                         className="flex-1"
                       />
-                      <Button 
-                        variant="secondary" 
+                      <Button
+                        variant="secondary"
                         onClick={calculateShipping}
                         disabled={isCalculatingShipping || shippingZipCode.length < 8}
                       >
@@ -979,12 +999,12 @@ const Checkout = () => {
 
                   {/* Shipping options */}
                   {shippingQuotes.length > 0 && (
-                    <RadioGroup 
-                      value={selectedShipping?.service || ""} 
+                    <RadioGroup
+                      value={selectedShipping?.service || ""}
                       onValueChange={(v) => setSelectedShipping(shippingQuotes.find(q => q.service === v) || null)}
                     >
                       {shippingQuotes.map((quote) => (
-                        <div 
+                        <div
                           key={quote.service}
                           className={`flex items-center justify-between p-3 rounded-lg border ${selectedShipping?.service === quote.service ? "border-primary bg-primary/5" : "border-border"}`}
                         >
@@ -993,7 +1013,7 @@ const Checkout = () => {
                             <Label htmlFor={quote.service} className="cursor-pointer">
                               <span className="font-medium">{quote.serviceName}</span>
                               <p className="text-xs text-muted-foreground">
-                                {quote.deliveryRange.min === quote.deliveryRange.max 
+                                {quote.deliveryRange.min === quote.deliveryRange.max
                                   ? `${quote.deliveryDays} dias úteis`
                                   : `${quote.deliveryRange.min}-${quote.deliveryRange.max} dias úteis`
                                 }
@@ -1037,8 +1057,8 @@ const Checkout = () => {
 
               <div className="flex gap-3 pt-4">
                 <Button variant="outline" onClick={() => setCurrentStep("profile")}>Voltar</Button>
-                <Button 
-                  className="flex-1" 
+                <Button
+                  className="flex-1"
                   onClick={() => setCurrentStep("review")}
                   disabled={!canProceedToReview()}
                 >
@@ -1062,7 +1082,7 @@ const Checkout = () => {
                   const stock = productStocks[item.productId]?.stock_by_size;
                   const stockObj = (stock && typeof stock === 'object') ? stock as Record<string, number> : {};
                   const lowStock = isLowStock(stockObj, item.size);
-                  
+
                   return (
                     <div key={`${item.productId}-${item.size}`} className="flex justify-between text-sm items-center">
                       <span className="flex items-center gap-2">
@@ -1073,7 +1093,7 @@ const Checkout = () => {
                     </div>
                   );
                 })}
-                
+
                 <div className="border-t pt-2 mt-2 space-y-1">
                   <div className="flex justify-between text-sm">
                     <span>Subtotal</span>
@@ -1108,9 +1128,9 @@ const Checkout = () => {
                 <CouponInput
                   onApply={(code) => couponHook.applyCoupon(code, cartSubtotal)}
                   onRemove={couponHook.removeCoupon}
-                  appliedCoupon={couponHook.coupon ? { 
-                    code: couponHook.coupon.code, 
-                    discountAmount: couponHook.discountAmount 
+                  appliedCoupon={couponHook.coupon ? {
+                    code: couponHook.coupon.code,
+                    discountAmount: couponHook.discountAmount
                   } : null}
                   isLoading={couponHook.isLoading}
                   error={couponHook.error}
@@ -1160,8 +1180,8 @@ const Checkout = () => {
 
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setCurrentStep("delivery")}>Voltar</Button>
-              <Button 
-                className="flex-1" 
+              <Button
+                className="flex-1"
                 size="lg"
                 onClick={handleSubmit}
                 disabled={isSubmitting || stockErrors.length > 0}
@@ -1199,7 +1219,7 @@ const Checkout = () => {
                 </div>
 
                 <p className="text-sm text-muted-foreground text-center">
-                  Você será redirecionada para o Mercado Pago para finalizar o pagamento com segurança. 
+                  Você será redirecionada para o Mercado Pago para finalizar o pagamento com segurança.
                   Aceita cartão, Pix e boleto.
                 </p>
 
@@ -1238,7 +1258,7 @@ function StepIndicator({ step, current, label, icon }: { step: CheckoutStep; cur
   const stepIdx = steps.indexOf(step);
   const isActive = step === current;
   const isCompleted = stepIdx < currentIdx;
-  
+
   return (
     <div className={`flex flex-col items-center gap-1 ${isActive ? "text-primary" : isCompleted ? "text-primary/70" : "text-muted-foreground"}`}>
       <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isActive ? "bg-primary text-primary-foreground" : isCompleted ? "bg-primary/20" : "bg-muted"}`}>

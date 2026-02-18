@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { 
-  Settings, Award, Megaphone, Gift, Target, BarChart3, 
+import {
+  Settings, Award, Megaphone, Gift, Target, BarChart3,
   Plus, Pencil, Trash2, Check, X, Loader2, ToggleLeft, ToggleRight
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -129,13 +129,13 @@ export function LoyaltyClubAdmin() {
 }
 
 // ============ CONFIG TAB ============
-function ConfigTab({ 
-  settings, 
-  messages, 
-  onSaveSettings, 
-  onSaveMessages 
-}: { 
-  settings: any; 
+function ConfigTab({
+  settings,
+  messages,
+  onSaveSettings,
+  onSaveMessages
+}: {
+  settings: any;
   messages: any;
   onSaveSettings: (s: any) => Promise<void>;
   onSaveMessages: (m: any) => Promise<void>;
@@ -268,12 +268,12 @@ function ConfigTab({
 }
 
 // ============ TIERS TAB ============
-function TiersTab({ 
-  tiers, 
-  onSave, 
-  onDelete 
-}: { 
-  tiers: LoyaltyTier[]; 
+function TiersTab({
+  tiers,
+  onSave,
+  onDelete
+}: {
+  tiers: LoyaltyTier[];
   onSave: (t: Partial<LoyaltyTier>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
@@ -326,9 +326,9 @@ function TiersTab({
                 <TableCell>{tier.displayOrder}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <div 
-                      className="w-3 h-3 rounded-full" 
-                      style={{ backgroundColor: tier.badgeColor }} 
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: tier.badgeColor }}
                     />
                     <span className="font-medium">{tier.name}</span>
                   </div>
@@ -446,13 +446,13 @@ function TiersTab({
 }
 
 // ============ CAMPAIGNS TAB ============
-function CampaignsTab({ 
-  campaigns, 
+function CampaignsTab({
+  campaigns,
   tiers,
-  onSave, 
-  onDelete 
-}: { 
-  campaigns: LoyaltyCampaign[]; 
+  onSave,
+  onDelete
+}: {
+  campaigns: LoyaltyCampaign[];
   tiers: LoyaltyTier[];
   onSave: (c: Partial<LoyaltyCampaign>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -491,7 +491,7 @@ function CampaignsTab({
           <CardTitle>Campanhas</CardTitle>
           <CardDescription>Promoções e multiplicadores temporários</CardDescription>
         </div>
-        <Button onClick={() => setEditing({ isActive: true, campaignType: "multiplier", multiplierValue: 2, channelScope: "both", applicableTiers: ["poa", "classica", "icone", "atelier"], priority: 0 })} size="sm">
+        <Button onClick={() => setEditing({ isActive: true, campaignType: "multiplier", multiplierValue: 2, channelScope: "both", applicableTiers: ["poa", "poa_gold", "poa_platinum", "atelier"], priority: 0 })} size="sm">
           <Plus className="h-4 w-4 mr-1" /> Nova Campanha
         </Button>
       </CardHeader>
@@ -524,7 +524,7 @@ function CampaignsTab({
                 </TableCell>
                 <TableCell className="capitalize">{c.channelScope}</TableCell>
                 <TableCell className="text-sm">
-                  {c.startAt ? new Date(c.startAt).toLocaleDateString("pt-BR") : "-"} 
+                  {c.startAt ? new Date(c.startAt).toLocaleDateString("pt-BR") : "-"}
                   {" → "}
                   {c.endAt ? new Date(c.endAt).toLocaleDateString("pt-BR") : "∞"}
                 </TableCell>
@@ -723,9 +723,9 @@ function RewardsTab({ tiers }: { tiers: LoyaltyTier[] }) {
           <h4 className="font-medium mb-2">Níveis e elegibilidade</h4>
           <div className="flex flex-wrap gap-2">
             {tiers.map(tier => (
-              <Badge 
-                key={tier.id} 
-                variant="outline" 
+              <Badge
+                key={tier.id}
+                variant="outline"
                 style={{ borderColor: tier.badgeColor, color: tier.badgeColor }}
               >
                 {tier.name} ({tier.minPoints}+ pts)
@@ -739,13 +739,13 @@ function RewardsTab({ tiers }: { tiers: LoyaltyTier[] }) {
 }
 
 // ============ MISSIONS TAB ============
-function MissionsTab({ 
-  missions, 
+function MissionsTab({
+  missions,
   tiers,
-  onSave, 
-  onDelete 
-}: { 
-  missions: LoyaltyMission[]; 
+  onSave,
+  onDelete
+}: {
+  missions: LoyaltyMission[];
   tiers: LoyaltyTier[];
   onSave: (m: Partial<LoyaltyMission>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -785,11 +785,11 @@ function MissionsTab({
           <CardTitle>Missões</CardTitle>
           <CardDescription>Questionários e tarefas que dão pontos</CardDescription>
         </div>
-        <Button onClick={() => setEditing({ 
-          isActive: true, 
+        <Button onClick={() => setEditing({
+          isActive: true,
           isPublished: false,
-          missionType: "quiz", 
-          pointsReward: 50, 
+          missionType: "quiz",
+          pointsReward: 50,
           maxPhotos: 5,
           emoji: "🎯",
           displayOrder: missions.length,
@@ -1015,7 +1015,7 @@ function ReportsTab({ data, tiers }: { data: any; tiers: LoyaltyTier[] }) {
                 const count = data.tierDistribution.find((t: any) => t.tier === tier.slug)?.count || 0;
                 const total = data.activeUsers || 1;
                 const percent = Math.round((count / total) * 100);
-                
+
                 return (
                   <div key={tier.id} className="space-y-1">
                     <div className="flex justify-between text-sm">
@@ -1026,8 +1026,8 @@ function ReportsTab({ data, tiers }: { data: any; tiers: LoyaltyTier[] }) {
                       <span className="text-muted-foreground">{count} ({percent}%)</span>
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div 
-                        className="h-full rounded-full" 
+                      <div
+                        className="h-full rounded-full"
                         style={{ width: `${percent}%`, backgroundColor: tier.badgeColor }}
                       />
                     </div>

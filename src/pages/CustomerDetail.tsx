@@ -30,6 +30,7 @@ interface Customer {
   phone: string;
   name: string | null;
   email: string | null;
+  instagram: string | null; // Added instagram
   size: string | null;
   size_letter: string | null;
   size_number: string | null;
@@ -179,7 +180,50 @@ const CustomerDetail = () => {
         .single();
 
       if (customerError) throw customerError;
-      setCustomer(customerData as unknown as Customer);
+
+      let customerDataObj = customerError ? null : customerData as any;
+
+      // Auto-sync Instagram if missing
+      if (customerDataObj && !customerDataObj.instagram) {
+        // Try by client_id first
+        let { data: liveData } = await supabase
+          .from("live_customers")
+          .select("id, instagram_handle")
+          .eq("client_id", id)
+          .maybeSingle();
+
+        // Fallback by phone
+        if (!liveData) {
+          const normalizedPhone = customerDataObj.phone?.replace(/\D/g, "");
+          if (normalizedPhone) {
+            const { data: fallbackLD } = await supabase
+              .from("live_customers")
+              .select("id, instagram_handle")
+              .or(`whatsapp.ilike.%${normalizedPhone}%,whatsapp.ilike.%${normalizedPhone.slice(-8)}%`)
+              .limit(1)
+              .maybeSingle();
+
+            if (fallbackLD) {
+              liveData = fallbackLD;
+              // Link them for future use
+              await (supabase
+                .from("live_customers") as any)
+                .update({ client_id: id })
+                .eq("id", liveData.id);
+            }
+          }
+        }
+
+        if (liveData?.instagram_handle) {
+          await (supabase
+            .from("customers") as any)
+            .update({ instagram: liveData.instagram_handle })
+            .eq("id", id);
+          customerDataObj.instagram = liveData.instagram_handle;
+        }
+      }
+
+      setCustomer(customerDataObj as unknown as Customer);
 
       // Load orders by customer_id first, then by phone match
       const { data: ordersById } = await supabase
@@ -200,11 +244,16 @@ const CustomerDetail = () => {
 
         additionalOrders = (ordersByPhone || []).filter((order) => {
           const orderPhone = order.customer_phone?.replace(/\D/g, "");
-          return (
-            orderPhone === customerPhone ||
-            orderPhone?.endsWith(customerPhone) ||
-            customerPhone?.endsWith(orderPhone)
-          );
+          if (!orderPhone || !customerPhone) return false;
+
+          // Basic exact match
+          if (orderPhone === customerPhone) return true;
+
+          // Match considering 55 prefix (Brazil)
+          const strip55 = (p: string) => p.startsWith('55') ? p.slice(2) : p;
+          if (strip55(orderPhone) === strip55(customerPhone)) return true;
+
+          return false;
         });
       }
 
@@ -250,7 +299,7 @@ const CustomerDetail = () => {
           .eq("user_id", customerData.user_id)
           .order("created_at", { ascending: false })
           .limit(10);
-        
+
         quizData = quizByUser || [];
       }
       setQuizResponses(quizData);
@@ -391,7 +440,7 @@ const CustomerDetail = () => {
   const effectiveStyleTitle = customer.style_title || profileData?.style_title;
   const effectiveSizeLetter = customer.size_letter || profileData?.size_letter;
   const effectiveSizeNumber = customer.size_number || profileData?.size_number;
-  
+
   const hasQuiz = quizResponses.length > 0 || !!effectiveStyleTitle || !!profileData?.quiz_completed_at;
   const hasPrints = prints.length > 0;
 
@@ -429,6 +478,7 @@ const CustomerDetail = () => {
               phone: customer.phone,
               name: customer.name,
               email: customer.email,
+              instagram: customer.instagram,
               style_title: effectiveStyleTitle || null,
               size_letter: effectiveSizeLetter || null,
               size_number: effectiveSizeNumber || null,
@@ -522,8 +572,8 @@ const CustomerDetail = () => {
 
           {/* Vendas Tab - Consolidated Sales Report */}
           <TabsContent value="vendas">
-            <CustomerSalesReport 
-              customerId={customer.id} 
+            <CustomerSalesReport
+              customerId={customer.id}
               customerPhone={customer.phone}
             />
           </TabsContent>
@@ -537,6 +587,7 @@ const CustomerDetail = () => {
                 name: customer.name,
                 phone: customer.phone,
                 email: customer.email,
+                instagram: customer.instagram,
                 address_line: customer.address_line,
                 city: customer.city,
                 state: customer.state,

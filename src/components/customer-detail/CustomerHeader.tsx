@@ -9,6 +9,7 @@ interface CustomerHeaderProps {
     phone: string;
     name: string | null;
     email: string | null;
+    instagram: string | null;
     style_title: string | null;
     size_letter: string | null;
     size_number: string | null;
@@ -96,12 +97,23 @@ export function CustomerHeader({ customer, hasQuiz, hasPrints }: CustomerHeaderP
                 <AlertCircle className="h-5 w-5 text-amber-500" />
               )}
             </div>
-            
+
             <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Phone className="h-4 w-4" />
                 {formatPhone(customer.phone)}
               </span>
+              {customer.instagram && (
+                <a
+                  href={`https://instagram.com/${customer.instagram.replace('@', '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-primary hover:underline"
+                >
+                  <User className="h-4 w-4" />
+                  @{customer.instagram.replace('@', '')}
+                </a>
+              )}
               {customer.email && (
                 <span className="flex items-center gap-1">
                   <Mail className="h-4 w-4" />

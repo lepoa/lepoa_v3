@@ -7,11 +7,11 @@ import { QuizOptionCard } from "@/components/QuizOptionCard";
 import { PointsAnimation } from "@/components/PointsAnimation";
 import { MissionPhotoUpload } from "@/components/MissionPhotoUpload";
 import { MissionCompletionScreen } from "@/components/MissionCompletionScreen";
-import { 
-  getMissionById, 
+import {
+  getMissionById,
   getAvailableMissions,
-  Mission, 
-  MISSION_POINTS 
+  Mission,
+  MISSION_POINTS
 } from "@/lib/missionsData";
 import { getLevelFromPoints } from "@/lib/quizDataV2";
 import { supabase } from "@/integrations/supabase/client";
@@ -37,7 +37,7 @@ const MissionQuiz = () => {
   const { missionId } = useParams();
   const { user, isLoading: authLoading } = useAuth();
   const { firePoints, fireLevelUp, fireConfetti } = useConfetti();
-  
+
   const [mission, setMission] = useState<Mission | null>(null);
   const [currentStep, setCurrentStep] = useState(0); // 0 to N-1 for questions, N for photos
   const [answers, setAnswers] = useState<MissionAnswer[]>([]);
@@ -90,7 +90,7 @@ const MissionQuiz = () => {
     if (profile) {
       setCurrentPoints(profile.quiz_points || 0);
       setPreviousLevel(profile.quiz_level || 1);
-      
+
       // Check if already completed
       const completed = (profile.completed_missions as string[]) || [];
       if (completed.includes(missionId)) {
@@ -186,7 +186,7 @@ const MissionQuiz = () => {
         .insert([attemptData])
         .select("id")
         .single();
-      
+
       if (data) {
         setExistingAttempt(data.id);
       }
@@ -248,6 +248,20 @@ const MissionQuiz = () => {
         answers: JSON.parse(JSON.stringify(answers)),
       }]);
 
+      // AWARD LOYALTY POINTS (Unified System)
+      // @ts-ignore
+      const { error: loyaltyError } = await supabase.rpc("award_loyalty_points", {
+        p_user_id: user.id,
+        p_points: totalEarned,
+        p_description: `Missão: ${mission.title}`,
+        p_mission_id: mission.id
+      });
+
+      if (loyaltyError) {
+        console.error("Error awarding loyalty points:", loyaltyError);
+        // Don't fail the written progress, just log error
+      }
+
       // Update profile
       const { data: profile } = await supabase
         .from("profiles")
@@ -281,7 +295,7 @@ const MissionQuiz = () => {
       fireConfetti({ type: "celebration" });
       setCurrentPoints(newTotalPoints);
       setIsCompleted(true);
-      
+
     } catch (error) {
       console.error("Error completing mission:", error);
       toast.error("Erro ao salvar missão");
@@ -369,13 +383,13 @@ const MissionQuiz = () => {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      
-      <PointsAnimation 
-        points={animationPoints} 
+
+      <PointsAnimation
+        points={animationPoints}
         show={showPointsAnimation}
         onComplete={() => setShowPointsAnimation(false)}
       />
-      
+
       <main className="flex-1 container mx-auto px-4 py-6 max-w-2xl">
         {/* Mission Header */}
         <div className="text-center mb-6">
@@ -397,7 +411,7 @@ const MissionQuiz = () => {
             </span>
           </div>
           <div className="h-2 bg-secondary rounded-full overflow-hidden">
-            <div 
+            <div
               className="h-full bg-gradient-to-r from-accent to-primary transition-all duration-500"
               style={{ width: `${((currentStep + 1) / (totalQuestions + 1)) * 100}%` }}
             />
@@ -405,7 +419,7 @@ const MissionQuiz = () => {
         </div>
 
         {/* Question or Photo Step */}
-        <div 
+        <div
           className={cn(
             "transition-all duration-300 ease-out",
             isTransitioning ? "opacity-0 translate-y-4" : "opacity-100 translate-y-0"
@@ -429,15 +443,15 @@ const MissionQuiz = () => {
                   {question.subtext}
                 </p>
               )}
-              
+
               <h2 className="font-serif text-2xl md:text-3xl mb-6 animate-slide-in-up" style={{ animationDelay: "50ms" }}>
                 {question.question}
               </h2>
 
               <div className="space-y-3">
                 {question.options.map((option, index) => (
-                  <div 
-                    key={index} 
+                  <div
+                    key={index}
                     className="animate-slide-in-up"
                     style={{ animationDelay: `${100 + index * 50}ms` }}
                   >
@@ -457,8 +471,8 @@ const MissionQuiz = () => {
         {/* Navigation */}
         <div className="mt-8 flex gap-4">
           {currentStep > 0 && (
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={handlePrevious}
               className="gap-2"
               disabled={isSubmitting || isTransitioning}
@@ -467,10 +481,10 @@ const MissionQuiz = () => {
               Voltar
             </Button>
           )}
-          
+
           {isPhotoStep ? (
             <div className="flex-1 flex gap-2">
-              <Button 
+              <Button
                 variant="outline"
                 onClick={handleSkipPhotos}
                 disabled={isSubmitting}
@@ -478,7 +492,7 @@ const MissionQuiz = () => {
               >
                 Pular fotos
               </Button>
-              <Button 
+              <Button
                 onClick={handleNext}
                 disabled={isSubmitting}
                 className="flex-1 gap-2"
@@ -497,7 +511,7 @@ const MissionQuiz = () => {
               </Button>
             </div>
           ) : (
-            <Button 
+            <Button
               onClick={handleNext}
               disabled={selectedOption === null || isSubmitting || isTransitioning}
               className="flex-1 gap-2"

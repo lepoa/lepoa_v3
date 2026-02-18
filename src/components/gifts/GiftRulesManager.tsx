@@ -16,6 +16,7 @@ import {
   Users,
   CreditCard,
   DollarSign,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -234,7 +235,16 @@ export function GiftRulesManager() {
 
   const getRuleStatus = (rule: GiftRule) => {
     if (!rule.is_active) return { label: "Inativa", variant: "secondary" as const };
-    
+
+    // Check stock
+    if (rule.gift && !rule.gift.unlimited_stock && rule.gift.stock_qty < rule.gift_qty) {
+      return {
+        label: "Sem Estoque",
+        variant: "destructive" as const,
+        description: `Requer ${rule.gift_qty}, disp: ${rule.gift.stock_qty}`
+      };
+    }
+
     const now = new Date();
     if (rule.start_at && new Date(rule.start_at) > now) {
       return { label: "Agendada", variant: "outline" as const };
@@ -247,6 +257,9 @@ export function GiftRulesManager() {
     }
     return { label: "Ativa", variant: "default" as const };
   };
+
+  const selectedGift = activeGifts.find(g => g.id === formGiftId);
+  const stockWarning = selectedGift && !selectedGift.unlimited_stock && selectedGift.stock_qty < (parseInt(formGiftQty) || 1);
 
   const needsConditionValue = formConditionType === "min_value" || formConditionType === "first_n_paid" || formConditionType === "first_n_reserved";
 
@@ -329,6 +342,12 @@ export function GiftRulesManager() {
                           <div>
                             <div className="text-sm">{rule.gift?.name || "—"}</div>
                             <div className="text-xs text-muted-foreground">x{rule.gift_qty}</div>
+                            {/* Stock warning in list */}
+                            {rule.gift && !rule.gift.unlimited_stock && (
+                              <div className={cn("text-[10px]", rule.gift.stock_qty < rule.gift_qty ? "text-destructive font-medium" : "text-muted-foreground")}>
+                                Estoque: {rule.gift.stock_qty}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </TableCell>
@@ -358,7 +377,14 @@ export function GiftRulesManager() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={status.variant}>{status.label}</Badge>
+                        <div className="flex flex-col gap-1">
+                          <Badge variant={status.variant}>{status.label}</Badge>
+                          {status.description && (
+                            <span className="text-[10px] text-destructive font-medium whitespace-nowrap">
+                              {status.description}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -416,7 +442,7 @@ export function GiftRulesManager() {
               <div className="col-span-2 space-y-2">
                 <Label>Brinde *</Label>
                 <Select value={formGiftId} onValueChange={setFormGiftId}>
-                  <SelectTrigger>
+                  <SelectTrigger className={cn(stockWarning && "border-destructive text-destructive")}>
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent className="bg-background z-50">
@@ -425,6 +451,11 @@ export function GiftRulesManager() {
                         <span className="flex items-center gap-2">
                           <Gift className="h-3 w-3" />
                           {g.name}
+                          {!g.unlimited_stock && (
+                            <span className={cn("text-xs ml-1", g.stock_qty < (parseInt(formGiftQty) || 1) ? "text-destructive" : "text-muted-foreground")}>
+                              (Estoque: {g.stock_qty})
+                            </span>
+                          )}
                         </span>
                       </SelectItem>
                     ))}
@@ -438,11 +469,26 @@ export function GiftRulesManager() {
                   min="1"
                   value={formGiftQty}
                   onChange={(e) => setFormGiftQty(e.target.value)}
+                  className={cn(stockWarning && "border-destructive text-destructive")}
                 />
               </div>
             </div>
 
+            {/* Stock Warning Alert in form */}
+            {stockWarning && selectedGift && (
+              <div className="text-sm bg-destructive/10 text-destructive p-3 rounded-md flex gap-2 items-start mt-0">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <div className="flex flex-col gap-1">
+                  <p className="font-medium">Atenção: Estoque Insuficiente</p>
+                  <p className="text-xs opacity-90">
+                    Você está configurando para dar <strong>{formGiftQty}</strong> unidades, mas só há <strong>{selectedGift.stock_qty}</strong> em estoque.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Channel Scope */}
+            {/* ... rest of the form ... */}
             <div className="space-y-2">
               <Label>Aplicar em</Label>
               <Select value={formChannelScope} onValueChange={(v) => setFormChannelScope(v as GiftChannelScope)}>
@@ -458,6 +504,7 @@ export function GiftRulesManager() {
               </Select>
             </div>
 
+            {/* ... remaining fields ... */}
             {/* Live Event (conditional) */}
             {formChannelScope === "live_specific" && (
               <div className="space-y-2">

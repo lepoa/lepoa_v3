@@ -50,13 +50,41 @@ export function CustomerLiveHistory({ customerId }: CustomerLiveHistoryProps) {
   const loadLiveHistory = async () => {
     setIsLoading(true);
     try {
-      // Find live_customers linked to this customer
-      const { data: liveCustomers, error: lcError } = await supabase
+      // 1. Find live_customers linked to this customer via client_id
+      let { data: liveCustomers, error: lcError } = await supabase
         .from("live_customers")
-        .select("id, live_event_id")
+        .select("id, live_event_id, whatsapp")
         .eq("client_id", customerId);
 
       if (lcError) throw lcError;
+
+      // 2. Fallback: Search by phone if no records found via client_id
+      // This happens for customers created via scripts or manual entry
+      if (!liveCustomers || liveCustomers.length === 0) {
+        const { data: customer } = await supabase
+          .from("customers")
+          .select("phone")
+          .eq("id", customerId)
+          .single();
+
+        const normalizedPhone = customer?.phone?.replace(/\D/g, "");
+        if (normalizedPhone) {
+          const { data: fallbackLC } = await supabase
+            .from("live_customers")
+            .select("id, live_event_id, whatsapp")
+            .or(`whatsapp.ilike.%${normalizedPhone}%,whatsapp.ilike.%${normalizedPhone.slice(-8)}%`);
+
+          liveCustomers = fallbackLC || [];
+
+          // Proactively link these records for next time
+          if (liveCustomers.length > 0) {
+            await supabase
+              .from("live_customers")
+              .update({ client_id: customerId })
+              .in("id", liveCustomers.map(lc => lc.id));
+          }
+        }
+      }
 
       if (!liveCustomers || liveCustomers.length === 0) {
         setLiveHistory([]);
@@ -66,7 +94,7 @@ export function CustomerLiveHistory({ customerId }: CustomerLiveHistoryProps) {
 
       // Get all carts for these live customers
       const liveCustomerIds = liveCustomers.map(lc => lc.id);
-      
+
       const { data: carts, error: cartsError } = await supabase
         .from("live_carts")
         .select(`
@@ -228,8 +256,8 @@ export function CustomerLiveHistory({ customerId }: CustomerLiveHistoryProps) {
           <div className="flex-1">
             <div className="text-sm text-muted-foreground">Taxa de Conversão</div>
             <div className="text-xl font-bold">
-              {stats.totalCarts > 0 
-                ? `${Math.round((stats.paid / stats.totalCarts) * 100)}%` 
+              {stats.totalCarts > 0
+                ? `${Math.round((stats.paid / stats.totalCarts) * 100)}%`
                 : "—"}
             </div>
           </div>
@@ -238,7 +266,7 @@ export function CustomerLiveHistory({ customerId }: CustomerLiveHistoryProps) {
         {/* Cart History List */}
         <div className="space-y-4">
           <h4 className="font-medium text-sm text-muted-foreground">Carrinhos</h4>
-          
+
           {liveHistory.map((cart) => (
             <div
               key={cart.id}

@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import type { 
-  LiveCart, 
-  LiveCartItem, 
-  LiveCustomer, 
+import type {
+  LiveCart,
+  LiveCartItem,
+  LiveCustomer,
   LiveWaitlist,
-  QuickLaunchForm 
+  QuickLaunchForm
 } from "@/types/liveShop";
 
 export function useLiveBackstage(eventId: string | undefined, pauseRefetch: boolean = false) {
@@ -14,7 +14,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
   const [carts, setCarts] = useState<LiveCart[]>([]);
   const [waitlist, setWaitlist] = useState<LiveWaitlist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Use ref to track if component is mounted and avoid stale closures
   const isMountedRef = useRef(true);
   const channelsRef = useRef<ReturnType<typeof supabase.channel>[]>([]);
@@ -86,7 +86,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
   useEffect(() => {
     isMountedRef.current = true;
     fetchBackstageData();
-    
+
     return () => {
       isMountedRef.current = false;
     };
@@ -113,32 +113,32 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
     const playPaymentSound = () => {
       try {
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        
+
         // Create a pleasant "cha-ching" sound effect
         const playTone = (frequency: number, startTime: number, duration: number, gain: number) => {
           const oscillator = audioContext.createOscillator();
           const gainNode = audioContext.createGain();
-          
+
           oscillator.connect(gainNode);
           gainNode.connect(audioContext.destination);
-          
+
           oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime + startTime);
           oscillator.type = 'sine';
-          
+
           gainNode.gain.setValueAtTime(0, audioContext.currentTime + startTime);
           gainNode.gain.linearRampToValueAtTime(gain, audioContext.currentTime + startTime + 0.01);
           gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + startTime + duration);
-          
+
           oscillator.start(audioContext.currentTime + startTime);
           oscillator.stop(audioContext.currentTime + startTime + duration);
         };
-        
+
         // Play a cheerful ascending melody (like a cash register)
         playTone(523.25, 0, 0.15, 0.3);    // C5
         playTone(659.25, 0.1, 0.15, 0.3);  // E5
         playTone(783.99, 0.2, 0.25, 0.4);  // G5
         playTone(1046.5, 0.35, 0.4, 0.5);  // C6
-        
+
       } catch (error) {
         console.log("Could not play notification sound:", error);
       }
@@ -151,7 +151,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
         if (payload.eventType === 'UPDATE' && payload.new?.status === 'pago' && payload.old?.status !== 'pago') {
           // Play notification sound (always play even if paused)
           playPaymentSound();
-          
+
           // Fetch customer info for this cart to show in notification
           supabase
             .from("live_customers")
@@ -165,7 +165,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
                 style: "currency",
                 currency: "BRL",
               }).format(total);
-              
+
               // Show celebratory toast notification (only if not paused)
               if (!pauseRefetchRef.current) {
                 toast.success(
@@ -279,19 +279,93 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
 
     try {
       // Check if customer exists for this live (normalized comparison)
-      const existing = customers.find(c => 
+      const existing = customers.find(c =>
         c.instagram_handle.toLowerCase().replace(/@/g, "").trim() === handle
       );
-      
+
+      // If customer exists but is missing name or CRM link, try to find and update it
+      if (existing && (!existing.nome || !existing.client_id)) {
+        const { data: crmCustomer } = await supabase
+          .from("customers")
+          .select("id, name, phone, email")
+          .or(`instagram_handle.ilike.${handle},instagram_handle.ilike.@${handle}`)
+          .is("merged_into_customer_id", null)
+          .maybeSingle();
+
+        if (crmCustomer) {
+          const { data: updated } = await supabase
+            .from("live_customers")
+            .update({
+              client_id: crmCustomer.id,
+              nome: crmCustomer.name,
+              whatsapp: crmCustomer.phone
+            })
+            .eq("id", existing.id)
+            .select()
+            .single();
+
+          if (updated) {
+            fetchBackstageData();
+            return updated as LiveCustomer;
+          }
+        }
+      }
+
       if (existing) return existing;
 
-      // Check if customer exists in the main CRM by normalized instagram_handle
-      const { data: existingCrmCustomer } = await supabase
+      // 1. Try to find in CRM (customers table) - Primary source of truth
+      let { data: existingCrmCustomer } = await supabase
         .from("customers")
         .select("id, name, phone, email, instagram_handle")
         .or(`instagram_handle.ilike.${handle},instagram_handle.ilike.@${handle}`)
         .is("merged_into_customer_id", null)
         .maybeSingle();
+
+      // 2. Try to find in instagram_identities if CRM failed
+      if (!existingCrmCustomer) {
+        const { data: identity } = await supabase
+          .from("instagram_identities")
+          .select("customer_id")
+          .ilike("instagram_handle_normalized", handle)
+          .maybeSingle();
+
+        if (identity?.customer_id) {
+          const { data: customerFromIdentity } = await supabase
+            .from("customers")
+            .select("id, name, phone, email, instagram_handle")
+            .eq("id", identity.customer_id)
+            .is("merged_into_customer_id", null)
+            .maybeSingle();
+
+          if (customerFromIdentity) {
+            existingCrmCustomer = customerFromIdentity;
+          }
+        }
+      }
+
+      // 3. Try fallback: search globally in live_customers for this handle to see if linked before
+      if (!existingCrmCustomer) {
+        const { data: previousLiveCustomer } = await supabase
+          .from("live_customers")
+          .select("client_id")
+          .ilike("instagram_handle", handle)
+          .not("client_id", "is", null)
+          .limit(1)
+          .maybeSingle();
+
+        if (previousLiveCustomer?.client_id) {
+          const { data: customerFromPrevLive } = await supabase
+            .from("customers")
+            .select("id, name, phone, email, instagram_handle")
+            .eq("id", previousLiveCustomer.client_id)
+            .is("merged_into_customer_id", null)
+            .maybeSingle();
+
+          if (customerFromPrevLive) {
+            existingCrmCustomer = customerFromPrevLive;
+          }
+        }
+      }
 
       // Create new live customer, linking to existing CRM customer if found
       const { data, error } = await supabase
@@ -311,7 +385,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
         if (error.code === '23505') {
           // Unique constraint - customer exists, refetch
           await fetchBackstageData();
-          return customers.find(c => 
+          return customers.find(c =>
             c.instagram_handle.toLowerCase().replace(/@/g, "").trim() === handle
           ) || null;
         }
@@ -342,7 +416,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
       .select("status")
       .eq("id", eventId)
       .single();
-    
+
     // Block new cart creation if live is ended or archived
     // (existing carts can still be fetched for payment/management)
     const liveIsClosed = eventData?.status === 'encerrada' || eventData?.status === 'arquivada';
@@ -362,13 +436,13 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
         .eq("live_event_id", eventId)
         .eq("live_customer_id", customerId)
         .maybeSingle();
-      
+
       if (existingCart) {
         // If cart was cancelled or expired, reactivate it when adding new items
         if (existingCart.status === 'cancelado' || existingCart.status === 'expirado') {
           const { data: reactivatedCart, error: reactivateError } = await supabase
             .from("live_carts")
-            .update({ 
+            .update({
               // Reativar carrinho para que volte ao fluxo de cobrança
               status: 'aguardando_pagamento',
               separation_status: 'pendente',
@@ -383,7 +457,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
               )
             `)
             .single();
-          
+
           if (reactivateError) {
             console.error("Error reactivating cart:", reactivateError);
             return existingCart as LiveCart;
@@ -404,11 +478,30 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
       }
 
       // Create new cart
+      // We look up the associated CRM customer to see if they have a linked user_id
+      // to ensure the cart appears in their "Meus Pedidos" view on the mobile app.
+      const { data: customerData } = await supabase
+        .from("live_customers")
+        .select("client_id")
+        .eq("id", customerId)
+        .single();
+
+      let cartUserId = null;
+      if (customerData?.client_id) {
+        const { data: crmCustomer } = await supabase
+          .from("customers")
+          .select("user_id")
+          .eq("id", customerData.client_id)
+          .maybeSingle();
+        cartUserId = crmCustomer?.user_id || null;
+      }
+
       const { data, error } = await supabase
         .from("live_carts")
         .insert({
           live_event_id: eventId,
           live_customer_id: customerId,
+          user_id: cartUserId, // Link to auth user for mobile app visibility
           status: 'aberto',
           subtotal: 0,
           descontos: 0,
@@ -439,7 +532,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
       .select("status")
       .eq("id", eventId)
       .single();
-    
+
     if (eventData?.status === 'encerrada' || eventData?.status === 'arquivada') {
       toast.error("Live encerrada! Não é possível adicionar novos itens.");
       return false;
@@ -483,19 +576,16 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
         }
       }
 
-      // Check stock
+      // Check stock using centralized available stock function
+      // This properly accounts for on_hand, committed (catalog), and reserved (live)
       const size = form.tamanho || "";
-      const currentStock = (product.stock_by_size as Record<string, number>)?.[size] || 0;
-      
-      // Get reserved stock for this size
-      const { data: reservedData } = await supabase
-        .rpc("get_live_reserved_stock", { 
-          p_product_id: form.product_id, 
-          p_size: size 
+      const { data: availableData } = await supabase
+        .rpc("get_available_stock", {
+          p_product_id: form.product_id,
+          p_size: size
         });
-      
-      const reservedStock = reservedData || 0;
-      const availableStock = currentStock - reservedStock;
+
+      const availableStock = availableData || 0;
 
       if (availableStock < form.qtd) {
         toast.error(`Estoque insuficiente! Disponível: ${availableStock}`);
@@ -529,7 +619,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
         });
 
       if (itemError) throw itemError;
-      
+
       // Log the action for debugging
       console.log("[quickLaunch] Upsert result:", upsertResult);
 
@@ -564,7 +654,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
         .eq("live_cart_id", cartId)
         .in("status", ["reservado", "confirmado"]);
 
-      const subtotal = (items || []).reduce((sum, item) => 
+      const subtotal = (items || []).reduce((sum, item) =>
         sum + (item.preco_unitario * item.qtd), 0);
 
       await supabase
@@ -586,14 +676,14 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
 
   // Evaluate gift rules for a live cart
   const evaluateGiftRulesForCart = async (
-    cartId: string, 
-    cartTotal: number, 
+    cartId: string,
+    cartTotal: number,
     liveEventId: string,
     customerId?: string
   ): Promise<void> => {
     try {
       const now = new Date().toISOString();
-      
+
       // Fetch applicable rules for live
       const { data: rules } = await supabase
         .from("gift_rules")
@@ -639,8 +729,8 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
             break;
           case "first_n_paid":
           case "first_n_reserved":
-            conditionMet = rule.condition_value 
-              ? rule.current_awards_count < rule.condition_value 
+            conditionMet = rule.condition_value
+              ? rule.current_awards_count < rule.condition_value
               : false;
             break;
         }
@@ -731,7 +821,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
       if (cart?.bag_number && cart?.label_printed_at) {
         await supabase
           .from("live_carts")
-          .update({ 
+          .update({
             needs_label_reprint: true,
             updated_at: new Date().toISOString() // Force realtime update
           })
@@ -744,8 +834,8 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
 
   // Remove item from cart
   // CRITICAL: If item was already separated, route to cancelItemForSeparation for proper tracking
-  const removeCartItem = async (itemId: string): Promise<{ 
-    success: boolean; 
+  const removeCartItem = async (itemId: string): Promise<{
+    success: boolean;
     waitlistEntry?: LiveWaitlist;
     productId?: string;
     size?: string;
@@ -784,7 +874,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
       // Check waitlist for this product/variant
       const variante = item.variante as Record<string, string>;
       const size = variante?.tamanho || '';
-      
+
       const { data: waitlistItems } = await supabase
         .from("live_waitlist")
         .select("*")
@@ -804,7 +894,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
             duration: 8000,
             action: {
               label: "Ver fila",
-              onClick: () => {},
+              onClick: () => { },
             },
           }
         );
@@ -813,9 +903,9 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
       }
 
       await fetchBackstageData();
-      
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         waitlistEntry: hasWaitlist ? waitlistItems[0] as LiveWaitlist : undefined,
         productId: item.product_id,
         size
@@ -861,20 +951,20 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
       // We do this by updating separation_notes to track pending removals
       let newNotes = item.separation_notes || '';
       let newSeparationStatus = item.separation_status;
-      
+
       if (wasSeparated) {
         // Parse existing pending_removal count or start at 0
         const pendingMatch = newNotes.match(/pending_removal:(\d+)/);
         const currentPending = pendingMatch ? parseInt(pendingMatch[1], 10) : 0;
         const newPendingCount = currentPending + 1;
-        
+
         // Update or add pending_removal count in notes
         if (pendingMatch) {
           newNotes = newNotes.replace(/pending_removal:\d+/, `pending_removal:${newPendingCount}`);
         } else {
           newNotes = newNotes ? `${newNotes} | pending_removal:${newPendingCount}` : `pending_removal:${newPendingCount}`;
         }
-        
+
         // Mark as needing attention (cancelled items pending removal)
         newSeparationStatus = 'cancelado';
       }
@@ -882,7 +972,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
       // Reduce quantity by 1
       const { error } = await supabase
         .from("live_cart_items")
-        .update({ 
+        .update({
           qtd: item.qtd - 1,
           separation_notes: wasSeparated ? newNotes : item.separation_notes,
           separation_status: wasSeparated ? newSeparationStatus : item.separation_status,
@@ -901,7 +991,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
           .from("live_carts")
           .update({ separation_status: 'atencao' })
           .eq("id", item.live_cart_id);
-        
+
         toast.warning("⚠️ 1 unidade cancelada! Retire da sacola física.", {
           duration: 6000,
         });
@@ -909,7 +999,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
         // Check waitlist for this product/variant
         const variante = item.variante as Record<string, string>;
         const size = variante?.tamanho || '';
-        
+
         const { data: waitlistItems } = await supabase
           .from("live_waitlist")
           .select("*")
@@ -960,7 +1050,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
       // This keeps the item but marks it for removal in the separation screen
       const { error } = await supabase
         .from("live_cart_items")
-        .update({ 
+        .update({
           status: 'cancelado',
           separation_status: 'cancelado',
           separation_notes: notes || 'Cancelado pelo cliente - retirar da sacola'
@@ -994,7 +1084,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
 
   // Add to waitlist (enhanced version)
   const addToWaitlist = async (
-    productId: string, 
+    productId: string,
     variante: { cor?: string; tamanho?: string },
     instagramHandle: string,
     whatsapp?: string,
@@ -1003,8 +1093,8 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
   ): Promise<boolean> => {
     if (!eventId) return false;
 
-    const handle = instagramHandle.startsWith("@") 
-      ? instagramHandle.toLowerCase() 
+    const handle = instagramHandle.startsWith("@")
+      ? instagramHandle.toLowerCase()
       : `@${instagramHandle.toLowerCase()}`;
 
     try {
@@ -1107,7 +1197,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
       }
 
       const variante = freshWaitlistItem.variante as { cor?: string; tamanho?: string };
-      
+
       // Try to add to cart with the EXACT size from the waitlist entry
       const success = await quickLaunch({
         instagram_handle: freshWaitlistItem.instagram_handle,
@@ -1166,23 +1256,23 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
 
   // Check if customer has product ("Ela garantiu?")
   const checkCustomerHasProduct = (
-    instagramHandle: string, 
+    instagramHandle: string,
     productId?: string
   ): { found: boolean; status: 'reservado' | 'espera' | 'nao_consta'; details?: string } => {
-    const handle = instagramHandle.startsWith("@") 
-      ? instagramHandle.toLowerCase() 
+    const handle = instagramHandle.startsWith("@")
+      ? instagramHandle.toLowerCase()
       : `@${instagramHandle.toLowerCase()}`;
 
     // Check carts
     for (const cart of carts) {
       if (cart.live_customer?.instagram_handle.toLowerCase() === handle) {
         const items = cart.items || [];
-        const matchingItems = productId 
+        const matchingItems = productId
           ? items.filter(i => i.product_id === productId && ['reservado', 'confirmado'].includes(i.status))
           : items.filter(i => ['reservado', 'confirmado'].includes(i.status));
-        
+
         if (matchingItems.length > 0) {
-          const itemNames = matchingItems.map(i => 
+          const itemNames = matchingItems.map(i =>
             `${i.product?.name} (${i.variante?.tamanho})`).join(", ");
           return {
             found: true,
@@ -1262,7 +1352,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
   // Manually update cart status (for in-store or alternative payments)
   // CRITICAL: If cancelling a cart that was already separated/printed, route to ATENÇÃO workflow
   const updateCartStatus = async (
-    cartId: string, 
+    cartId: string,
     newStatus: 'aberto' | 'pago' | 'cancelado',
     paymentMethod?: string
   ): Promise<{ success: boolean; requiresAttention?: boolean }> => {
@@ -1270,17 +1360,17 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
       // Get current cart to record old status
       const currentCart = carts.find(c => c.id === cartId);
       const oldStatus = currentCart?.status || null;
-      
+
       // ATTENTION WORKFLOW: Check if cancelling a committed cart
       if (newStatus === 'cancelado' && currentCart) {
         const isCommitted = await checkCartCommittedState(cartId);
-        
+
         if (isCommitted) {
           // Cart was already separated/printed - needs physical action first
           // Don't cancel directly, mark for attention instead
           const items = currentCart.items || [];
           const activeItems = items.filter(i => ['reservado', 'confirmado'].includes(i.status));
-          
+
           // Log attention for each active item
           for (const item of activeItems) {
             const variante = item.variante as Record<string, string>;
@@ -1294,39 +1384,39 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
               p_origin_bag_number: currentCart.bag_number || null,
               p_payload: { reason: 'cart_cancellation', item_id: item.id }
             });
-            
+
             // Mark item for cancellation tracking
             await supabase
               .from("live_cart_items")
-              .update({ 
+              .update({
                 status: 'cancelado',
                 separation_status: 'cancelado',
                 separation_notes: 'Cancelado - RETIRAR DA SACOLA FÍSICA'
               })
               .eq("id", item.id);
           }
-          
+
           // Update cart to attention status (not cancelled yet)
           await supabase
             .from("live_carts")
-            .update({ 
+            .update({
               separation_status: 'atencao',
               needs_label_reprint: currentCart.label_printed_at ? true : false
             })
             .eq("id", cartId);
-          
+
           toast.warning(
-            "⚠️ Sacola requer atenção física! Itens marcados para retirada na separação.", 
+            "⚠️ Sacola requer atenção física! Itens marcados para retirada na separação.",
             { duration: 6000 }
           );
-          
+
           await fetchBackstageData();
           return { success: true, requiresAttention: true };
         }
       }
-      
+
       const updateData: Record<string, any> = { status: newStatus };
-      
+
       // If marking as paid, create official order, decrement stock, and update items
       if (newStatus === 'pago' && currentCart) {
         // Update cart items to confirmed
@@ -1339,13 +1429,13 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
         // Get customer and items from current cart data
         const customer = currentCart.live_customer;
         const items = currentCart.items || [];
-        
+
         const customerPhone = customer?.whatsapp || "";
         const customerName = customer?.nome || customer?.instagram_handle || "Cliente Live";
-        
-        // Create official order
-        const { data: newOrder, error: orderError } = await supabase
-          .from("orders")
+
+        // Create official order - the handle_order_paid trigger will manage committed stock
+        const { data: newOrder, error: orderError } = await (supabase
+          .from("orders") as any)
           .insert({
             customer_name: customerName,
             customer_phone: customerPhone,
@@ -1356,6 +1446,8 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
             delivery_method: (currentCart.frete || 0) > 0 ? "shipping" : "pickup",
             shipping_fee: currentCart.frete || 0,
             live_event_id: currentCart.live_event_id,
+            live_cart_id: cartId, // CRITICAL for stock tracking
+            source: 'live'        // CRITICAL for stock counting
           })
           .select()
           .single();
@@ -1365,8 +1457,8 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
         } else if (newOrder) {
           console.log(`Created order ${newOrder.id} from manual live cart payment`);
 
-          // Get active items for order and stock decrement
-          const activeItems = items.filter((item) => 
+          // Get active items for order
+          const activeItems = items.filter((item) =>
             item.status === "reservado" || item.status === "confirmado"
           );
 
@@ -1392,40 +1484,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
             }
           }
 
-          // CRITICAL: Decrement stock for live cart items on manual payment
-          console.log(`Decrementing stock for ${activeItems.length} live cart items (manual payment)`);
-          for (const item of activeItems) {
-            const size = (item.variante as any)?.tamanho || "";
-            if (!size) continue;
-
-            // Get current stock
-            const { data: product } = await supabase
-              .from("product_catalog")
-              .select("stock_by_size")
-              .eq("id", item.product_id)
-              .single();
-
-            if (product?.stock_by_size) {
-              const stockBySize = product.stock_by_size as Record<string, number>;
-              const currentStock = stockBySize[size] || 0;
-              const newStock = Math.max(0, currentStock - item.qtd);
-
-              // Update stock
-              await supabase
-                .from("product_catalog")
-                .update({
-                  stock_by_size: {
-                    ...stockBySize,
-                    [size]: newStock,
-                  },
-                })
-                .eq("id", item.product_id);
-
-              console.log(`Stock updated: ${item.product_id} size ${size}: ${currentStock} -> ${newStock}`);
-            }
-          }
-
-          // Link order to live cart
+          // Link order to live cart - INSIDE the newOrder block
           updateData.order_id = newOrder.id;
         }
       }
@@ -1437,10 +1496,10 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
           .update({ status: 'cancelado' })
           .eq("live_cart_id", cartId)
           .in("status", ['reservado', 'confirmado']);
-        
+
         // Also update separation_status
         updateData.separation_status = 'cancelado';
-        
+
         console.log(`Released reservations for cancelled cart ${cartId}`);
       }
 

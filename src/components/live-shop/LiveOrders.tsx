@@ -39,17 +39,17 @@ export function LiveOrders() {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
   const { hasRole, rolesLoading } = useAuth();
-  
+
   // Wait for roles to load before computing isAdmin
   const isAdmin = !rolesLoading && hasRole("admin");
-  
+
   const { event, isLoading: eventLoading } = useLiveEvent(eventId);
-  const { 
-    orders, 
-    sellers, 
-    kpis, 
-    isLoading, 
-    filterOrders, 
+  const {
+    orders,
+    sellers,
+    kpis,
+    isLoading,
+    filterOrders,
     ordersNeedingCharge,
     getOrderUrgency,
     assignSeller,
@@ -70,14 +70,14 @@ export function LiveOrders() {
     recordCharge,
     fetchChargeHistory,
     updateTrackingCode,
-    refetch 
+    refetch
   } = useLiveOrders(eventId);
 
   // View state
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [massChargeOpen, setMassChargeOpen] = useState(false);
   const [manualPaymentOrderId, setManualPaymentOrderId] = useState<string | null>(null);
-  
+
   // Filter state
   const [filters, setFilters] = useState<LiveOrderFilters>({
     search: '',
@@ -105,8 +105,8 @@ export function LiveOrders() {
   }, [selectedOrder?.id, fetchChargeHistory]);
 
   // Get the order for manual payment
-  const manualPaymentOrder = useMemo(() => 
-    orders.find(o => o.id === manualPaymentOrderId), 
+  const manualPaymentOrder = useMemo(() =>
+    orders.find(o => o.id === manualPaymentOrderId),
     [orders, manualPaymentOrderId]
   );
 
@@ -214,8 +214,8 @@ export function LiveOrders() {
           {/* Top row - Title and main action */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 size="icon"
                 onClick={() => navigate("/dashboard")}
                 className="shrink-0"
@@ -244,8 +244,8 @@ export function LiveOrders() {
           {/* Bottom row - Action buttons (wrap on mobile) */}
           <div className="flex items-center gap-2 mt-3 flex-wrap">
             {ordersNeedingCharge.length > 0 && (
-              <Button 
-                variant="default" 
+              <Button
+                variant="default"
                 size="sm"
                 onClick={() => setMassChargeOpen(true)}
                 className="bg-rose-600 hover:bg-rose-700 h-9"
@@ -254,24 +254,24 @@ export function LiveOrders() {
                 <span className="hidden sm:inline">Cobrar</span> ({ordersNeedingCharge.length})
               </Button>
             )}
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               onClick={() => navigate(`/dashboard/lives/${eventId}/pendencias`)}
               className="h-9"
             >
               Pendências
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               onClick={() => navigate(`/dashboard/lives/${eventId}/relatorio`)}
               className="h-9"
             >
               Relatório
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               onClick={() => navigate(`/dashboard/lives/${eventId}/separacao`)}
               className="h-9"
@@ -284,8 +284,8 @@ export function LiveOrders() {
 
       {/* KPIs */}
       <div className="max-w-7xl mx-auto px-4 py-4">
-        <LiveOrderKPIs 
-          kpis={kpis} 
+        <LiveOrderKPIs
+          kpis={kpis}
           activeFilter={filters.status}
           onFilterClick={handleKpiClick}
         />
@@ -385,8 +385,8 @@ export function LiveOrders() {
           {(filters.urgentOnly || filters.needsCharge || filters.pendingProof) && (
             <div className="flex gap-1 flex-wrap">
               {filters.urgentOnly && (
-                <Badge 
-                  variant="outline" 
+                <Badge
+                  variant="outline"
                   className="cursor-pointer border-amber-300 text-amber-700 bg-amber-50"
                   onClick={() => setFilters(prev => ({ ...prev, urgentOnly: false }))}
                 >
@@ -395,8 +395,8 @@ export function LiveOrders() {
                 </Badge>
               )}
               {filters.needsCharge && (
-                <Badge 
-                  variant="outline" 
+                <Badge
+                  variant="outline"
                   className="cursor-pointer border-rose-300 text-rose-700 bg-rose-50"
                   onClick={() => setFilters(prev => ({ ...prev, needsCharge: false }))}
                 >
@@ -405,8 +405,8 @@ export function LiveOrders() {
                 </Badge>
               )}
               {filters.pendingProof && (
-                <Badge 
-                  variant="outline" 
+                <Badge
+                  variant="outline"
                   className="cursor-pointer border-purple-300 text-purple-700 bg-purple-50"
                   onClick={() => setFilters(prev => ({ ...prev, pendingProof: false }))}
                 >

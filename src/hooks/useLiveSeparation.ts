@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import type { 
-  SeparationBag, 
-  SeparationItem, 
-  ProductSeparationGroup, 
+import type {
+  SeparationBag,
+  SeparationItem,
+  ProductSeparationGroup,
   SeparationKPIs,
   SeparationItemStatus,
   SeparationBagStatus,
@@ -28,7 +28,7 @@ export function useLiveSeparation(eventId: string | undefined) {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingBags, setIsGeneratingBags] = useState(false);
-  
+
   const isMountedRef = useRef(true);
   const channelsRef = useRef<ReturnType<typeof supabase.channel>[]>([]);
 
@@ -104,7 +104,7 @@ export function useLiveSeparation(eventId: string | undefined) {
           const wasSeparated = cart.separation_status === 'separado';
           const hadLabelGenerated = cart.status === 'etiqueta_gerada' || cart.operational_status === 'etiqueta_gerada';
           const wasCommitted = hasLabelPrinted || wasSeparated || hadLabelGenerated;
-          
+
           // If it was committed, DON'T auto-cancel - let it go through attention workflow
           return !wasCommitted;
         })
@@ -129,11 +129,11 @@ export function useLiveSeparation(eventId: string | undefined) {
         const labelPrintedAt = cart.label_printed_at || null;
         const bagHasLabel = !!labelPrintedAt;
         const bagSeparationStatus = cart.separation_status;
-        const bagWasInCommittedState = bagHasLabel || 
-          bagSeparationStatus === 'separado' || 
+        const bagWasInCommittedState = bagHasLabel ||
+          bagSeparationStatus === 'separado' ||
           cart.status === 'etiqueta_gerada' ||
           cart.operational_status === 'etiqueta_gerada';
-        
+
         // For separation, include items even if cart is 'expirado' (up to 7 days)
         // Only exclude truly 'removido' items (manually removed during live)
         const items: SeparationItem[] = (cart.items || [])
@@ -151,7 +151,7 @@ export function useLiveSeparation(eventId: string | undefined) {
             const cartItemCancelled = item.status === 'cancelado' || item.status === 'removido';
             const separationCancelled = item.separation_status === 'cancelado';
             const wasAlreadySeparated = item.separation_status === 'separado' || item.separation_status === 'retirado_confirmado';
-            
+
             // Parse removed_confirmed_count from notes if available
             let removedConfirmedCount = 0;
             if (item.separation_notes) {
@@ -160,7 +160,7 @@ export function useLiveSeparation(eventId: string | undefined) {
                 removedConfirmedCount = parseInt(match[1], 10);
               }
             }
-            
+
             // Parse pending_removal count from notes (set when quantity is reduced on already-separated item)
             let pendingRemovalFromQuantityReduction = 0;
             if (item.separation_notes) {
@@ -169,7 +169,7 @@ export function useLiveSeparation(eventId: string | undefined) {
                 pendingRemovalFromQuantityReduction = parseInt(pendingMatch[1], 10);
               }
             }
-            
+
             // Determine effective separation status:
             // If cart item was cancelled BUT separation wasn't updated yet, treat as cancelled
             // This handles the case where an already-separated item gets cancelled
@@ -179,27 +179,27 @@ export function useLiveSeparation(eventId: string | undefined) {
               // This is a newly cancelled item that needs removal confirmation
               effectiveStatus = 'cancelado';
             }
-            
+
             // Also treat as needing attention if there are pending removals from quantity reduction
             if (pendingRemovalFromQuantityReduction > 0 && effectiveStatus !== 'retirado_confirmado') {
               effectiveStatus = 'cancelado';
             }
-            
+
             // Calculate total pending removals: 
             // For fully cancelled items: quantity - removedConfirmedCount
             // For partially cancelled (qty reduced): pendingRemovalFromQuantityReduction - removedConfirmedCount
             // The removedConfirmedCount applies to the pending removal count
-            const effectivePendingRemoval = pendingRemovalFromQuantityReduction > 0 
+            const effectivePendingRemoval = pendingRemovalFromQuantityReduction > 0
               ? Math.max(0, pendingRemovalFromQuantityReduction - removedConfirmedCount)
               : 0;
-            
+
             // CRITICAL FIX: An item needs attention if:
             // 1. It was already marked as separated (separation_status = separado)
             // 2. OR the bag already had a label printed (bagHasLabel)
             // 3. OR the bag was in a committed state (etiqueta_gerada, etc.)
             // AND the item is now cancelled/removed
             const needsAttentionDueToCommittedState = bagWasInCommittedState && cartItemCancelled;
-            
+
             return {
               id: item.id,
               bagId: cart.id,
@@ -219,7 +219,7 @@ export function useLiveSeparation(eventId: string | undefined) {
               pendingRemovalFromQuantityReduction, // New: track units cancelled via qty reduction
               // Flag to indicate this was previously separated (for UI indication)
               // FIXED: Now also triggers when bag had label or was in committed state
-              wasSeparatedBeforeCancellation: (wasAlreadySeparated && cartItemCancelled) || 
+              wasSeparatedBeforeCancellation: (wasAlreadySeparated && cartItemCancelled) ||
                 pendingRemovalFromQuantityReduction > 0 ||
                 needsAttentionDueToCommittedState,
             };
@@ -253,30 +253,30 @@ export function useLiveSeparation(eventId: string | undefined) {
         const hasCancelledItems = allItems.some(i =>
           i.status === 'cancelado' || i.cartItemStatus === 'cancelado' || i.cartItemStatus === 'removido'
         );
-        const hasUnseparatedItems = allItems.some(i => 
+        const hasUnseparatedItems = allItems.some(i =>
           i.status === 'em_separacao' && !['cancelado', 'removido'].includes(i.cartItemStatus)
         );
-        
+
         // Calculate pending removal count for cancelled items
         let pendingRemovalCount = 0;
         allItems.forEach(item => {
           if (item.pendingRemovalFromQuantityReduction && item.pendingRemovalFromQuantityReduction > 0) {
             const pendingFromReduction = Math.max(0, item.pendingRemovalFromQuantityReduction - item.removedConfirmedCount);
             pendingRemovalCount += pendingFromReduction;
-          } 
+          }
           else if (item.status === 'cancelado' || item.cartItemStatus === 'cancelado' || item.cartItemStatus === 'removido') {
             const pending = item.quantity - item.removedConfirmedCount;
             if (pending > 0) pendingRemovalCount += pending;
           }
         });
-        
+
         // needsReprintLabel: only true if label was printed before (label_printed_at exists) AND needs_label_reprint is true
         // Note: labelPrintedAt is already defined at the top of this map function
         const needsReprintLabel = labelPrintedAt && cart.needs_label_reprint === true;
-        
+
         // Build attention requirements from both item state AND database logs
         const attentionRequirements: AttentionRequirement[] = [];
-        
+
         // First: Add attention from database logs (canonical source)
         const dbAttentionLogs = (cart.attention_logs || []) as any[];
         dbAttentionLogs.forEach((log: any) => {
@@ -297,42 +297,42 @@ export function useLiveSeparation(eventId: string | undefined) {
               removedFromOriginConfirmed: false,
               placedInDestinationConfirmed: false,
             };
-            
+
             attentionRequirements.push({
               type: log.attention_type as any,
               reallocationInfo,
-              description: log.attention_type === 'cancellation' 
+              description: log.attention_type === 'cancellation'
                 ? 'Pedido cancelado - retirar itens da sacola'
                 : log.attention_type === 'reallocation'
-                ? `Peça realocada para Sacola #${log.destination_bag_number}`
-                : 'Peça cancelada - retirar da sacola',
+                  ? `Peça realocada para Sacola #${log.destination_bag_number}`
+                  : 'Peça cancelada - retirar da sacola',
               resolved: false,
             });
           }
         });
-        
+
         // Second: Add attention from item state (for items cancelled after separation)
         allItems.forEach(item => {
           const wasSeparated = item.wasSeparatedBeforeCancellation;
           const isCancelled = item.status === 'cancelado' || item.cartItemStatus === 'cancelado' || item.cartItemStatus === 'removido';
           const hasPartialCancellation = (item.pendingRemovalFromQuantityReduction ?? 0) > 0;
-          
+
           // Only add if not already tracked in DB logs
-          const alreadyInLogs = dbAttentionLogs.some((log: any) => 
+          const alreadyInLogs = dbAttentionLogs.some((log: any) =>
             log.payload?.item_id === item.id && !log.resolved_at
           );
-          
+
           if (!alreadyInLogs && (wasSeparated || hasPartialCancellation) && (isCancelled || hasPartialCancellation)) {
-            const totalToRemove = hasPartialCancellation 
+            const totalToRemove = hasPartialCancellation
               ? (item.pendingRemovalFromQuantityReduction ?? 0)
               : item.quantity;
             const pendingRemoval = Math.max(0, totalToRemove - item.removedConfirmedCount);
-            
+
             if (pendingRemoval > 0) {
               let destinationBagId: string | null = null;
               let destinationBagNumber: number | null = null;
               let destinationInstagram: string | null = null;
-              
+
               if (item.notes) {
                 const reallocationMatch = item.notes.match(/reallocation:([^:]+):(\d+):([^|]+)/);
                 if (reallocationMatch) {
@@ -341,7 +341,7 @@ export function useLiveSeparation(eventId: string | undefined) {
                   destinationInstagram = reallocationMatch[3]?.trim() || null;
                 }
               }
-              
+
               const reallocationInfo: ReallocationInfo = {
                 itemId: item.id,
                 productName: item.productName,
@@ -358,22 +358,22 @@ export function useLiveSeparation(eventId: string | undefined) {
                 removedFromOriginConfirmed: false,
                 placedInDestinationConfirmed: false,
               };
-              
+
               attentionRequirements.push({
                 type: destinationBagId ? 'reallocation' : (hasPartialCancellation ? 'quantity_reduction' : 'cancellation'),
                 reallocationInfo,
-                description: destinationBagId 
-                  ? `Peça realocada para Sacola #${destinationBagNumber}` 
+                description: destinationBagId
+                  ? `Peça realocada para Sacola #${destinationBagNumber}`
                   : 'Peça cancelada - retirar da sacola',
                 resolved: false,
               });
             }
           }
         });
-        
+
         const hasUnresolvedAttention = attentionRequirements.some(r => !r.resolved);
         const isBlocked = hasUnresolvedAttention; // Bag is blocked when there are unresolved attention requirements
-        
+
         // ATTENTION WORKFLOW FIX: Check for attention requirements BEFORE checking for cancelled status
         // This ensures bags that need attention don't skip to "cancelado" directly
         let bagStatus: SeparationBagStatus = 'em_separacao';
@@ -416,11 +416,11 @@ export function useLiveSeparation(eventId: string | undefined) {
 
       if (isMountedRef.current) {
         setBags(activeBags);
-        
+
         // Calculate product groups
         const groups = calculateProductGroups(activeBags);
         setProductGroups(groups);
-        
+
         // Calculate KPIs
         const calculatedKpis = calculateKPIs(activeBags);
         setKpis(calculatedKpis);
@@ -445,7 +445,7 @@ export function useLiveSeparation(eventId: string | undefined) {
       bag.items.forEach(item => {
         // Create unique key for product + color + size combination
         const key = `${item.productId}_${item.color || ''}_${item.size || ''}`;
-        
+
         if (!groupMap.has(key)) {
           groupMap.set(key, {
             productId: item.productId,
@@ -463,7 +463,7 @@ export function useLiveSeparation(eventId: string | undefined) {
         }
 
         const group = groupMap.get(key)!;
-        
+
         // Add to bag list
         group.bags.push({
           bagId: bag.id,
@@ -501,7 +501,7 @@ export function useLiveSeparation(eventId: string | undefined) {
     const bagsPending = bags.filter(b => b.status === 'em_separacao' || b.status === 'pendente').length;
     const bagsAttention = bags.filter(b => b.status === 'atencao').length;
     const bagsCancelled = bags.filter(b => b.status === 'cancelado').length;
-    
+
     let itemsCancelled = 0;
     bags.forEach(bag => {
       bag.items.forEach(item => {
@@ -513,8 +513,8 @@ export function useLiveSeparation(eventId: string | undefined) {
 
     // Calculate progress excluding cancelled bags
     const activeBags = totalBags - bagsCancelled;
-    const separationPercentage = activeBags > 0 
-      ? Math.round((bagsSeparated / activeBags) * 100) 
+    const separationPercentage = activeBags > 0
+      ? Math.round((bagsSeparated / activeBags) * 100)
       : 0;
 
     return {
@@ -531,7 +531,7 @@ export function useLiveSeparation(eventId: string | undefined) {
   // Generate bag numbers for all carts without one
   const generateBagNumbers = async (): Promise<boolean> => {
     if (!eventId) return false;
-    
+
     setIsGeneratingBags(true);
     try {
       // First check if there are ANY carts for this event (include expirado for separation)
@@ -585,12 +585,12 @@ export function useLiveSeparation(eventId: string | undefined) {
       for (const cart of cartsWithoutBag) {
         await supabase
           .from("live_carts")
-          .update({ 
+          .update({
             bag_number: nextBagNumber,
             separation_status: 'em_separacao'
           })
           .eq("id", cart.id);
-        
+
         // Also set all items to em_separacao
         await supabase
           .from("live_cart_items")
@@ -618,11 +618,11 @@ export function useLiveSeparation(eventId: string | undefined) {
     try {
       // Check if this is a gift item (IDs start with "gift-")
       const isGift = itemId.startsWith('gift-');
-      
+
       if (isGift) {
         // Extract the actual order_gifts ID
         const giftId = itemId.replace('gift-', '');
-        
+
         const { error } = await supabase
           .from("order_gifts")
           .update({ separation_confirmed: true })
@@ -659,7 +659,7 @@ export function useLiveSeparation(eventId: string | undefined) {
     try {
       const { error } = await supabase
         .from("live_cart_items")
-        .update({ 
+        .update({
           separation_status: 'cancelado',
           separation_notes: notes || 'Retirar do pedido'
         })
@@ -691,42 +691,60 @@ export function useLiveSeparation(eventId: string | undefined) {
     try {
       const item = bags.flatMap(b => b.items).find(i => i.id === itemId);
       if (!item) return false;
-      
+
       // Calculate new confirmed count
-      const newConfirmedCount = confirmedCount !== undefined 
-        ? confirmedCount 
+      const newConfirmedCount = confirmedCount !== undefined
+        ? confirmedCount
         : item.quantity; // If not specified, confirm all units
-      
+
       // Determine total units that need removal
       // For partial cancellation: use pendingRemovalFromQuantityReduction
       // For full cancellation: use item.quantity
       const totalToRemove = (item.pendingRemovalFromQuantityReduction && item.pendingRemovalFromQuantityReduction > 0)
         ? item.pendingRemovalFromQuantityReduction
         : item.quantity;
-      
+
       // Preserve existing notes (like pending_removal count) and update confirmed count
       let existingNotes = item.notes || '';
       // Update or add removed_confirmed count
       if (existingNotes.includes('removed_confirmed:')) {
         existingNotes = existingNotes.replace(/removed_confirmed:\d+/, `removed_confirmed:${newConfirmedCount}`);
       } else {
-        existingNotes = existingNotes 
-          ? `${existingNotes} | removed_confirmed:${newConfirmedCount}` 
+        existingNotes = existingNotes
+          ? `${existingNotes} | removed_confirmed:${newConfirmedCount}`
           : `removed_confirmed:${newConfirmedCount}`;
       }
-      
+
       // If all units are confirmed, mark as fully confirmed
       const allConfirmed = newConfirmedCount >= totalToRemove;
-      
+
       const { error } = await supabase
         .from("live_cart_items")
-        .update({ 
+        .update({
           separation_status: allConfirmed ? 'retirado_confirmado' : 'cancelado',
           separation_notes: existingNotes
         })
         .eq("id", itemId);
 
       if (error) throw error;
+
+      // If all units are confirmed, we should also resolve any associated attention logs
+      // This is crucial for "cancelado" type logs that block the bag
+      if (allConfirmed && eventId) {
+        const { error: logError } = await supabase
+          .from('live_attention_log')
+          .update({
+            resolved_at: new Date().toISOString(),
+            resolved_by: 'manual_confirmation'
+          })
+          .eq('live_event_id', eventId)
+          .is('resolved_at', null)
+          .contains('payload', { item_id: itemId });
+
+        if (logError) {
+          console.error("Error resolving attention log:", logError);
+        }
+      }
 
       // Check if bag status should be updated
       if (item) {
@@ -784,13 +802,13 @@ export function useLiveSeparation(eventId: string | undefined) {
 
   // Mark all items for a specific product as separated
   const markAllProductItemsSeparated = async (
-    productId: string, 
-    color: string | null, 
+    productId: string,
+    color: string | null,
     size: string | null
   ): Promise<boolean> => {
     try {
       // Find all matching items
-      const matchingItems = bags.flatMap(b => b.items).filter(item => 
+      const matchingItems = bags.flatMap(b => b.items).filter(item =>
         item.productId === productId &&
         item.color === color &&
         item.size === size &&
@@ -850,7 +868,7 @@ export function useLiveSeparation(eventId: string | undefined) {
       // If the cart has items but none are active anymore, cancel the bag/cart.
       const activeItems = items.filter(i => ['reservado', 'confirmado'].includes(i.status));
       const activeGifts = (gifts || []).filter(g => g.status !== 'removed');
-      
+
       if (items.length > 0 && activeItems.length === 0 && activeGifts.length === 0) {
         await supabase
           .from('live_carts')
@@ -862,15 +880,15 @@ export function useLiveSeparation(eventId: string | undefined) {
 
       // Check pending status for products
       const hasPendingProducts = activeItems.some(i =>
-        i.separation_status === 'em_separacao' || 
+        i.separation_status === 'em_separacao' ||
         i.separation_status === null
       );
-      
+
       // Check pending status for gifts (separation_confirmed = false means pending)
       const hasPendingGifts = activeGifts.some(g => !g.separation_confirmed);
-      
+
       const hasPending = hasPendingProducts || hasPendingGifts;
-      
+
       const hasCancelled = items.some(i =>
         i.separation_status === 'cancelado' || ['cancelado', 'removido'].includes(i.status)
       );
@@ -896,9 +914,9 @@ export function useLiveSeparation(eventId: string | undefined) {
     try {
       const { error } = await supabase
         .from("live_carts")
-        .update({ 
+        .update({
           label_printed_at: new Date().toISOString(),
-          needs_label_reprint: false 
+          needs_label_reprint: false
         })
         .eq("id", bagId);
 
@@ -917,9 +935,9 @@ export function useLiveSeparation(eventId: string | undefined) {
     try {
       const { error } = await supabase
         .from("live_carts")
-        .update({ 
+        .update({
           label_printed_at: new Date().toISOString(),
-          needs_label_reprint: false 
+          needs_label_reprint: false
         })
         .in("id", bagIds);
 
@@ -936,7 +954,7 @@ export function useLiveSeparation(eventId: string | undefined) {
   // Auto-generate bag number for a cart that doesn't have one
   const autoGenerateBagNumber = async (cartId: string): Promise<void> => {
     if (!eventId) return;
-    
+
     try {
       // Get current max bag number
       const { data: maxBagData } = await supabase
@@ -952,7 +970,7 @@ export function useLiveSeparation(eventId: string | undefined) {
 
       await supabase
         .from("live_carts")
-        .update({ 
+        .update({
           bag_number: nextBagNumber,
           separation_status: 'em_separacao'
         })
@@ -974,7 +992,7 @@ export function useLiveSeparation(eventId: string | undefined) {
   useEffect(() => {
     isMountedRef.current = true;
     fetchSeparationData();
-    
+
     return () => {
       isMountedRef.current = false;
     };
@@ -992,7 +1010,7 @@ export function useLiveSeparation(eventId: string | undefined) {
 
     const handleRealtimeUpdate = async (payload: any) => {
       if (!isMountedRef.current) return;
-      
+
       // Auto-generate bag number for new carts or carts that became eligible
       if (payload?.table === 'live_carts' && payload?.new) {
         const cart = payload.new;
@@ -1005,7 +1023,7 @@ export function useLiveSeparation(eventId: string | undefined) {
           await autoGenerateBagNumber(cart.id);
         }
       }
-      
+
       fetchSeparationData();
     };
 
@@ -1059,11 +1077,11 @@ export function useLiveSeparation(eventId: string | undefined) {
     // Apply search filter
     if (search.trim()) {
       const searchLower = search.toLowerCase();
-      filtered = filtered.filter(bag => 
+      filtered = filtered.filter(bag =>
         bag.instagramHandle.toLowerCase().includes(searchLower) ||
         bag.bagNumber.toString().includes(searchLower) ||
         bag.customerName?.toLowerCase().includes(searchLower) ||
-        bag.items.some(item => 
+        bag.items.some(item =>
           item.productName.toLowerCase().includes(searchLower)
         )
       );
@@ -1128,43 +1146,43 @@ export function useLiveSeparation(eventId: string | undefined) {
         toast.error("Confirme que retirou a peça da sacola original");
         return false;
       }
-      
+
       // If there's a destination and it's not confirmed yet
       if (reallocation.destinationBagId && !placedInDestinationConfirmed) {
         toast.error("Confirme que colocou a peça na nova sacola");
         return false;
       }
-      
+
       // Mark the item as fully resolved (retirado_confirmado)
       const item = bags.flatMap(b => b.items).find(i => i.id === reallocation.itemId);
       if (!item) return false;
-      
+
       // Update the notes to mark reallocation as resolved
       let existingNotes = item.notes || '';
-      
+
       // Update removed_confirmed count to full quantity
       const totalToRemove = (item.pendingRemovalFromQuantityReduction && item.pendingRemovalFromQuantityReduction > 0)
         ? item.pendingRemovalFromQuantityReduction
         : item.quantity;
-      
+
       if (existingNotes.includes('removed_confirmed:')) {
         existingNotes = existingNotes.replace(/removed_confirmed:\d+/, `removed_confirmed:${totalToRemove}`);
       } else {
-        existingNotes = existingNotes 
-          ? `${existingNotes} | removed_confirmed:${totalToRemove}` 
+        existingNotes = existingNotes
+          ? `${existingNotes} | removed_confirmed:${totalToRemove}`
           : `removed_confirmed:${totalToRemove}`;
       }
-      
+
       // Add reallocation_resolved marker
       if (!existingNotes.includes('reallocation_resolved')) {
-        existingNotes = existingNotes 
+        existingNotes = existingNotes
           ? `${existingNotes} | reallocation_resolved:${new Date().toISOString()}`
           : `reallocation_resolved:${new Date().toISOString()}`;
       }
-      
+
       const { error } = await supabase
         .from("live_cart_items")
-        .update({ 
+        .update({
           separation_status: 'retirado_confirmado',
           separation_notes: existingNotes
         })
@@ -1174,7 +1192,7 @@ export function useLiveSeparation(eventId: string | undefined) {
 
       // Update bag status
       await updateBagStatusIfComplete(reallocation.originBagId);
-      
+
       // Also set needs_label_reprint if label was already printed
       const bag = bags.find(b => b.id === reallocation.originBagId);
       if (bag?.labelPrintedAt) {

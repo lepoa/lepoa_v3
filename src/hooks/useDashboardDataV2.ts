@@ -44,7 +44,7 @@ export interface DashboardKPIsV2 {
   pedidosPagos: number;
   pedidosPendentes: number;
   cancelados: number;
-  tempoMedioPagamento: number; // hours
+  novosClientes: MainKPI;
   taxaCancelamento: number;
 }
 
@@ -228,13 +228,13 @@ export function useDashboardDataV2(filters: DashboardFilters) {
       const orders = ordersRes.data || [];
       const prevOrders = prevOrdersRes.data || [];
       const customers = customersRes.data || [];
-      
+
       // Debug logging for troubleshooting
       {
         const debugLiveOrders = orders.filter(o => o.live_event_id);
         const debugCatalogOrders = orders.filter(o => !o.live_event_id);
         const debugPaidOrdersCount = orders.filter(o => isPaidOrder(o)).length;
-        
+
         console.log(`[Dashboard Debug] Query Info:`, {
           dateRange: { start: startDate.toISOString(), end: endDate.toISOString() },
           filters: { channel: filters.channel, liveEventId: filters.liveEventId, sellerId: filters.sellerId },
@@ -245,8 +245,8 @@ export function useDashboardDataV2(filters: DashboardFilters) {
             paidOrders: debugPaidOrdersCount,
             previousPeriodOrders: prevOrders.length,
           },
-          warning: debugLiveOrders.length === 0 && filters.channel !== "catalog" 
-            ? "⚠️ No Live orders found. Check if live_carts are being converted to orders." 
+          warning: debugLiveOrders.length === 0 && filters.channel !== "catalog"
+            ? "⚠️ No Live orders found. Check if live_carts are being converted to orders."
             : null,
         });
       }
@@ -299,10 +299,10 @@ export function useDashboardDataV2(filters: DashboardFilters) {
       const paidOrders = orders.filter(o => isPaidOrder(o) && o.updated_at);
       const avgTimeToPayment = paidOrders.length > 0
         ? paidOrders.reduce((sum, o) => {
-            const created = parseISO(o.created_at);
-            const updated = parseISO(o.updated_at);
-            return sum + differenceInHours(updated, created);
-          }, 0) / paidOrders.length
+          const created = parseISO(o.created_at);
+          const updated = parseISO(o.updated_at);
+          return sum + differenceInHours(updated, created);
+        }, 0) / paidOrders.length
         : 0;
 
       // Pending actions - Use shared utility from orders table
@@ -312,9 +312,9 @@ export function useDashboardDataV2(filters: DashboardFilters) {
         liveEventId: filters.liveEventId,
         sellerId: filters.sellerId,
       });
-      
+
       console.log("[Dashboard] Pending orders debug:", pendingResult.debug);
-      
+
       // Convert to PendingAction format
       const actions: PendingAction[] = pendingResult.summary.map(s => ({
         id: s.type,
@@ -371,16 +371,16 @@ export function useDashboardDataV2(filters: DashboardFilters) {
         valorPago: number;
         tempoTotal: number;
       }>();
-      
+
       // Get seller names
       const sellerNames = new Map<string, string>();
       (sellersRes.data || []).forEach(s => sellerNames.set(s.id, s.name));
-      
+
       // Process orders for seller metrics
       orders.forEach(order => {
         const sellerId = order.seller_id;
         if (!sellerId) return;
-        
+
         const sellerName = sellerNames.get(sellerId) || "Sem nome";
         const existing = sellerMap.get(sellerId) || {
           id: sellerId,
@@ -396,7 +396,7 @@ export function useDashboardDataV2(filters: DashboardFilters) {
           existing.pedidosReservados += 1;
           existing.valorReservado += order.total || 0;
         }
-        
+
         if (isPaidOrder(order)) {
           existing.pedidosPagos += 1;
           existing.valorPago += order.total || 0;
@@ -416,7 +416,7 @@ export function useDashboardDataV2(filters: DashboardFilters) {
         const conversao = s.pedidosReservados > 0 ? (s.pedidosPagos / s.pedidosReservados) * 100 : 0;
         const ticketMedio = s.pedidosPagos > 0 ? s.valorPago / s.pedidosPagos : 0;
         const tempoMedioPagamento = s.pedidosPagos > 0 ? s.tempoTotal / s.pedidosPagos : 0;
-        
+
         return {
           id: s.id,
           name: s.name,
@@ -436,14 +436,14 @@ export function useDashboardDataV2(filters: DashboardFilters) {
         const maxFaturamento = Math.max(...sellersArr.map(s => s.valorPago), 1);
         const maxPedidos = Math.max(...sellersArr.map(s => s.pedidosPagos), 1);
         const maxTicket = Math.max(...sellersArr.map(s => s.ticketMedio), 1);
-        
+
         // Calculate performance score: 40% conversion + 30% revenue + 20% orders + 10% ticket
         sellersArr.forEach(s => {
           const normFaturamento = s.valorPago / maxFaturamento;
           const normPedidos = s.pedidosPagos / maxPedidos;
           const normTicket = s.ticketMedio / maxTicket;
           const normConversao = s.conversao / 100;
-          
+
           s.performanceScore = (normConversao * 0.4) + (normFaturamento * 0.3) + (normPedidos * 0.2) + (normTicket * 0.1);
         });
 
@@ -486,6 +486,21 @@ export function useDashboardDataV2(filters: DashboardFilters) {
         return { value: current, previousValue: previous, change, changePercent };
       };
 
+      // Fetch new customers count
+      const fetchNewCustomers = async (start: Date, end: Date) => {
+        const { count } = await supabase
+          .from("customers")
+          .select("*", { count: "exact", head: true })
+          .gte("created_at", start.toISOString())
+          .lte("created_at", end.toISOString());
+        return count || 0;
+      };
+
+      const [newCustomersCurrent, newCustomersPrev] = await Promise.all([
+        fetchNewCustomers(startDate, endDate),
+        fetchNewCustomers(prevStartDate, prevEndDate)
+      ]);
+
       const cancelledCount = orders.filter(o => o.status === "cancelado").length;
       const notCancelledCount = orders.filter(o => o.status !== "cancelado").length;
 
@@ -508,7 +523,7 @@ export function useDashboardDataV2(filters: DashboardFilters) {
         pedidosPagos: current.paidCount,
         pedidosPendentes: notCancelledCount - current.paidCount,
         cancelados: cancelledCount,
-        tempoMedioPagamento: avgTimeToPayment,
+        novosClientes: createKPI(newCustomersCurrent, newCustomersPrev),
         taxaCancelamento: (notCancelledCount + cancelledCount) > 0 ? (cancelledCount / (notCancelledCount + cancelledCount)) * 100 : 0,
       });
 

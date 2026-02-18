@@ -215,7 +215,7 @@ export function ClubRewardsManager({ onBack }: ClubRewardsManagerProps) {
         type: form.type as "discount_fixed" | "discount_percentage" | "free_shipping" | "gift" | "vip_access",
         points_cost: form.points_cost,
         discount_value: form.discount_value || null,
-        min_tier: form.min_tier as "poa" | "classica" | "icone" | "poa_black" | "atelier",
+        min_tier: form.min_tier as "poa" | "poa_gold" | "poa_platinum" | "poa_black" | "atelier",
         min_order_value: form.min_order_value || null,
         channel: form.channel,
         max_per_customer: form.max_per_customer,

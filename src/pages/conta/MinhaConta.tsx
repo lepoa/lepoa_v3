@@ -22,6 +22,7 @@ const authSchema = z.object({
 });
 
 interface ProfileData {
+  full_name: string | null;
   quiz_points: number;
   quiz_level: number;
   completed_missions: string[];
@@ -74,7 +75,7 @@ export default function MinhaConta() {
       // Load profile - use maybeSingle to handle missing profile
       let { data: profileData, error } = await supabase
         .from("profiles")
-        .select("quiz_points, quiz_level, completed_missions, style_title, last_mission_id, last_mission_completed_at")
+        .select("full_name, quiz_points, quiz_level, completed_missions, style_title, last_mission_id, last_mission_completed_at")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -83,12 +84,13 @@ export default function MinhaConta() {
         const { data: newProfile } = await supabase
           .from("profiles")
           .insert({ user_id: user.id })
-          .select("quiz_points, quiz_level, completed_missions, style_title, last_mission_id, last_mission_completed_at")
+          .select("full_name, quiz_points, quiz_level, completed_missions, style_title, last_mission_id, last_mission_completed_at")
           .single();
         profileData = newProfile;
       }
 
       setProfile({
+        full_name: profileData?.full_name || null,
         quiz_points: profileData?.quiz_points || 0,
         quiz_level: profileData?.quiz_level || 1,
         completed_missions: (profileData?.completed_missions as string[]) || [],
@@ -124,15 +126,17 @@ export default function MinhaConta() {
     const availableMissions = getAvailableMissions(completedMissions);
     const nextMission = availableMissions.length > 0 ? availableMissions[0] : null;
     const lastMission = profile?.last_mission_id ? getMissionById(profile.last_mission_id) : null;
-    
+
     return (
       <div className="min-h-screen bg-background">
         <Header />
-        
+
         <main className="container mx-auto px-4 py-8 max-w-lg">
           {/* Welcome Section */}
           <div className="text-center mb-6">
-            <h1 className="font-serif text-2xl mb-2">Olá! 👋</h1>
+            <h1 className="font-serif text-2xl mb-2">
+              Olá, {profile?.full_name?.split(' ')[0] || "Visitante"}! 👋
+            </h1>
             <p className="text-muted-foreground">{user.email}</p>
             {profile?.style_title && (
               <p className="text-sm text-accent mt-1">
@@ -247,7 +251,7 @@ export default function MinhaConta() {
 
             {/* Missions / Trails - New menu item */}
             {hasCompletedQuiz && (
-              <Card 
+              <Card
                 className="hover:shadow-md transition-shadow cursor-pointer border-accent/30"
                 onClick={() => {
                   // Scroll to missions section
@@ -279,34 +283,59 @@ export default function MinhaConta() {
                       <User className="h-5 w-5 text-accent" />
                     </div>
                     <div>
-                      <p className="font-medium">Meu Perfil</p>
-                      <p className="text-sm text-muted-foreground">Dados e preferências</p>
+                      <p className="font-medium">Meus Dados</p>
+                      <p className="text-sm text-muted-foreground">Endereço, senha e perfil</p>
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
                 </CardContent>
               </Card>
             </Link>
+
+
+            {/* Logout Button */}
+            <Card
+              className="hover:shadow-md transition-shadow cursor-pointer border-red-100 hover:bg-red-50/50"
+              onClick={async () => {
+                await supabase.auth.signOut();
+                navigate("/login");
+              }}
+            >
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                    <User className="h-5 w-5 text-red-500" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-red-600">Sair da Conta</p>
+                    <p className="text-sm text-red-400">Deslogar do dispositivo</p>
+                  </div>
+                </div>
+                <ChevronRight className="h-5 w-5 text-red-300" />
+              </CardContent>
+            </Card>
           </div>
 
           {/* Missions Section - Only show if user has completed quiz */}
-          {profile && profile.quiz_points > 0 && (
-            <div id="missions-section" className="mt-8 pt-8 border-t border-border">
-              <MissionsList 
-                completedMissions={profile.completed_missions}
-                currentPoints={profile.quiz_points}
-                currentLevel={profile.quiz_level}
-              />
-            </div>
-          )}
-        </main>
-      </div>
+          {
+            profile && profile.quiz_points > 0 && (
+              <div id="missions-section" className="mt-8 pt-8 border-t border-border">
+                <MissionsList
+                  completedMissions={profile.completed_missions}
+                  currentPoints={profile.quiz_points}
+                  currentLevel={profile.quiz_level}
+                />
+              </div>
+            )
+          }
+        </main >
+      </div >
     );
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const result = authSchema.safeParse({ email, password });
     if (!result.success) {
       toast.error(result.error.errors[0].message);
@@ -362,15 +391,15 @@ export default function MinhaConta() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container mx-auto px-4 py-12 max-w-sm">
         <div className="text-center mb-8">
           <h1 className="font-serif text-2xl mb-2">
             {isLogin ? "Entrar na sua conta" : "Criar conta"}
           </h1>
           <p className="text-muted-foreground text-sm">
-            {isLogin 
-              ? "Acesse seus pedidos e preferências" 
+            {isLogin
+              ? "Acesse seus pedidos e preferências"
               : "Crie sua conta para acompanhar tudo"}
           </p>
         </div>
@@ -478,8 +507,8 @@ export default function MinhaConta() {
             onClick={() => setIsLogin(!isLogin)}
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            {isLogin 
-              ? "Não tem conta? Criar agora" 
+            {isLogin
+              ? "Não tem conta? Criar agora"
               : "Já tem conta? Fazer login"}
           </button>
         </div>

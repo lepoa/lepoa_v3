@@ -461,19 +461,17 @@ export function LiveBackstage() {
     }, 0);
 
     // Check if any out-of-stock size has available stock now (released)
-    // FIXED: Subtract reservedStock if the view doesn't account for it
+    // DO NOT subtract reservedStock - product_available_stock view already includes all reservations
     const hasReleasedStock = sizes.some(size => {
-      const reserved = (reservedStock[lp.product_id] && reservedStock[lp.product_id][size]) || 0;
-      const available = Math.max(0, (availableBySize[size] || 0) - reserved);
+      const available = Math.max(0, availableBySize[size] || 0);
       const waitlistCount = getWaitlistCount(lp.product_id, size);
       return available > 0 && waitlistCount > 0;
     });
 
-    // Calculate total available stock (accounting for reservations)
+    // Calculate total available stock
+    // DO NOT subtract reservedStock - product_available_stock view already includes all reservations
     const totalAvailable = sizes.reduce((sum, size) => {
-      const reserved = (reservedStock[lp.product_id] && reservedStock[lp.product_id][size]) || 0;
-      const available = Math.max(0, (availableBySize[size] || 0) - reserved);
-      return sum + available;
+      return sum + Math.max(0, availableBySize[size] || 0);
     }, 0);
 
     const isFullyOutOfStock = totalAvailable === 0;
@@ -566,9 +564,8 @@ export function LiveBackstage() {
         {/* Size chips - using AVAILABLE stock */}
         <div className="flex flex-wrap gap-1.5 mt-2">
           {sizes.map(size => {
-            // FIXED: Subtract reservedStock because view might not include it (open carts)
-            const reserved = (reservedStock[lp.product_id] && reservedStock[lp.product_id][size]) || 0;
-            const available = Math.max(0, (availableBySize[size] || 0) - reserved);
+            // DO NOT subtract reservedStock - product_available_stock view already includes all reservations
+            const available = Math.max(0, availableBySize[size] || 0);
             const isOutOfStock = available <= 0;
             const waitlistCount = getWaitlistCount(lp.product_id, size);
             const hasWaitlistWithStock = available > 0 && waitlistCount > 0;
@@ -731,10 +728,8 @@ export function LiveBackstage() {
               }
 
               return sizes.map(size => {
-                // FIXED: Subtract reservedStock from available because the view might not account for open carts
-                // This aligns frontend display with backend validation logic
-                const reserved = (reservedStock[selectedProduct.product_id] && reservedStock[selectedProduct.product_id][size]) || 0;
-                const available = Math.max(0, (availableBySize[size] || 0) - reserved);
+                // DO NOT subtract reservedStock - product_available_stock view already includes all reservations
+                const available = Math.max(0, availableBySize[size] || 0);
                 const isSelected = selectedSize === size;
                 const isOutOfStock = available <= 0;
                 const waitlistCount = getWaitlistCount(selectedProduct.product_id, size);

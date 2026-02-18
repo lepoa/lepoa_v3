@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useGiftEngine } from "@/hooks/useGiftEngine";
 
 export interface CartItem {
   productId: string;
@@ -9,6 +10,7 @@ export interface CartItem {
   size: string;
   quantity: number;
   imageUrl?: string | null;
+  isGift?: boolean; // New: identify gift items
 }
 
 interface CartContextType {
@@ -19,6 +21,7 @@ interface CartContextType {
   clearCart: () => void;
   total: number;
   itemCount: number;
+  gifts: CartItem[]; // New: exposed gifts
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -46,9 +49,51 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return [];
   });
 
+  // Gift Engine Integration
+  const { evaluateAndApplyGifts } = useGiftEngine();
+  const [gifts, setGifts] = useState<CartItem[]>([]);
+
   useEffect(() => {
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
   }, [items]);
+
+  // Calculate total (excluding gifts)
+  const total = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
+
+  // Effect to calculate gifts when total changes
+  useEffect(() => {
+    const checkGifts = async () => {
+      // Clean up previous gifts from items is not needed because we store them separately in 'gifts' state
+      // But we need to calculate based on the current cart total
+      if (total > 0) {
+        const applicableGifts = await evaluateAndApplyGifts({
+          channel: "catalog",
+          cartTotal: total,
+          simulateOnly: true
+        });
+
+        // Convert AppliedGift to CartItem
+        const giftItems: CartItem[] = applicableGifts.map(g => ({
+          productId: g.giftId, // Use giftId as productId
+          name: g.giftName,
+          price: 0,
+          originalPrice: 0,
+          discountPercent: 100,
+          size: "Único",
+          quantity: g.qty,
+          imageUrl: g.giftImage,
+          isGift: true
+        }));
+
+        setGifts(giftItems);
+      } else {
+        setGifts([]);
+      }
+    };
+
+    checkGifts();
+  }, [total, evaluateAndApplyGifts]);
 
   const addItem = (item: Omit<CartItem, "quantity">) => {
     setItems((prev) => {
@@ -86,10 +131,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clearCart = () => setItems([]);
 
-  // Total uses final discounted price
-  const total = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
-
   return (
     <CartContext.Provider
       value={{
@@ -100,6 +141,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         clearCart,
         total,
         itemCount,
+        gifts, // Expose gifts
       }}
     >
       {children}

@@ -9,10 +9,10 @@ import { QuizOptionCard } from "@/components/QuizOptionCard";
 import { SizeSelector } from "@/components/SizeSelector";
 import { PointsAnimation } from "@/components/PointsAnimation";
 import { QuizPhotoUploadStep } from "@/components/QuizPhotoUploadStep";
-import { 
-  quizQuestionsV2, 
-  calculateStyleProfileV2, 
-  getLevelFromPoints, 
+import {
+  quizQuestionsV2,
+  calculateStyleProfileV2,
+  getLevelFromPoints,
   getQuestionPoints,
   OPEN_FIELD_BONUS,
   PHOTO_UPLOAD_BONUS
@@ -74,7 +74,7 @@ const QuizV2 = () => {
           .select("quiz_points")
           .eq("user_id", user.id)
           .single();
-        
+
         if (data?.quiz_points) {
           setExistingPoints(data.quiz_points);
         }
@@ -88,9 +88,9 @@ const QuizV2 = () => {
   const isSizeQuestion = question?.type === "size";
   const isPhotosQuestion = question?.type === "photos";
   const isOpenQuestion = question?.type === "open";
-  
+
   // Can always proceed on photos (optional) and open questions
-  const canProceed = isSizeQuestion 
+  const canProceed = isSizeQuestion
     ? (selectedLetterSize !== null || selectedNumberSize !== null)
     : isPhotosQuestion || isOpenQuestion
       ? true
@@ -138,7 +138,7 @@ const QuizV2 = () => {
   const handlePhotoPointsEarned = (points: number) => {
     // In redo mode, don't add photo points
     if (isRedoMode) return;
-    
+
     const newTotal = totalPoints + points;
     setTotalPoints(newTotal);
     setPointsJustEarned(points);
@@ -163,7 +163,7 @@ const QuizV2 = () => {
     if (isOpenQuestion) {
       // In redo mode, don't add new points
       const earnedPoints = isRedoMode ? 0 : (additionalNotes.trim() ? OPEN_FIELD_BONUS : 0);
-      
+
       if (earnedPoints > 0) {
         const newTotal = totalPoints + earnedPoints;
         setTotalPoints(newTotal);
@@ -185,16 +185,16 @@ const QuizV2 = () => {
     // Size question - final step, submit everything
     if (isSizeQuestion) {
       if (!selectedLetterSize && !selectedNumberSize) return;
-      
+
       setIsSubmitting(true);
       try {
         const earnedPoints = isRedoMode ? 0 : getQuestionPoints(question.pointsType);
         // In redo mode, keep existing points; otherwise calculate new total
         const finalPoints = isRedoMode ? existingPoints : totalPoints + earnedPoints;
-        
+
         // Calculate style profile from answers
         const profile = calculateStyleProfileV2(answers);
-        
+
         // Prepare quiz data for AI analysis
         const quizAnswers = answers.map(a => ({
           question: a.question,
@@ -229,7 +229,7 @@ const QuizV2 = () => {
         let userName = "";
         let userWhatsapp = "";
         let userEmail = "";
-        
+
         if (user) {
           // First try to get from profiles table
           const { data: profileData } = await supabase
@@ -237,16 +237,17 @@ const QuizV2 = () => {
             .select("name, whatsapp, full_name")
             .eq("user_id", user.id)
             .maybeSingle();
-          
+
           userName = profileData?.full_name || profileData?.name || user.user_metadata?.name || "";
           userWhatsapp = profileData?.whatsapp || user.user_metadata?.whatsapp || "";
           userEmail = user.email || "";
         }
 
         // Create customer record linked to user with all available data
+        // Use upsert to handle retries/existing customers
         const { data: customer, error: customerError } = await supabase
           .from("customers")
-          .insert({
+          .upsert({
             phone: userWhatsapp,
             name: userName,
             email: userEmail || null,
@@ -254,6 +255,9 @@ const QuizV2 = () => {
             size_letter: selectedLetterSize,
             size_number: selectedNumberSize,
             user_id: user?.id,
+          }, {
+            onConflict: 'user_id',
+            ignoreDuplicates: false
           })
           .select()
           .single();
@@ -263,12 +267,12 @@ const QuizV2 = () => {
         // Update user profile with quiz data
         if (user) {
           const { level } = getLevelFromPoints(finalPoints);
-          
+
           // Extract patterns from inspiration photos
           const photoPatterns = inspirationPhotos
             .filter(p => p.analysis)
             .map(p => p.analysis);
-          
+
           const topColors = photoPatterns
             .map(a => a?.cor?.value)
             .filter(Boolean)
@@ -338,6 +342,22 @@ const QuizV2 = () => {
           });
         }
 
+        // AWARD LOYALTY POINTS (Unified System)
+        // Only award points if it's not a redo
+        if (!isRedoMode && user && finalPoints > 0) {
+          // @ts-ignore
+          const { error: loyaltyError } = await supabase.rpc("award_loyalty_points", {
+            p_user_id: user.id,
+            p_points: finalPoints,
+            p_description: "Quiz de Estilo Inicial"
+          });
+
+          if (loyaltyError) {
+            console.error("Error awarding loyalty points:", loyaltyError);
+            toast.error("Erro ao computar pontos do clube, mas seu estilo foi salvo!");
+          }
+        }
+
         const { error: responsesError } = await supabase
           .from("quiz_responses")
           .insert(quizResponses);
@@ -346,8 +366,8 @@ const QuizV2 = () => {
 
         // Navigate to results with customer id and AI analysis
         navigate(`/resultado/${customer.id}`, {
-          state: { 
-            aiAnalysis, 
+          state: {
+            aiAnalysis,
             totalPoints: finalPoints,
             sizeLetter: selectedLetterSize,
             sizeNumber: selectedNumberSize,
@@ -369,7 +389,7 @@ const QuizV2 = () => {
     const option = question.options[selectedOption];
     // In redo mode, don't add points
     const earnedPoints = isRedoMode ? 0 : getQuestionPoints(question.pointsType);
-    
+
     const newAnswer: Answer = {
       questionId: question.id,
       question: question.question,
@@ -379,7 +399,7 @@ const QuizV2 = () => {
     };
 
     const newTotalPoints = totalPoints + earnedPoints;
-    
+
     // Fire confetti for points (only if earning new points)
     if (earnedPoints > 0) {
       firePoints(earnedPoints);
@@ -387,10 +407,10 @@ const QuizV2 = () => {
       setPointsJustEarned(earnedPoints);
       checkLevelUp(newTotalPoints);
     }
-    
+
     setAnswers([...answers, newAnswer]);
     setTotalPoints(newTotalPoints);
-    
+
     // Animate transition
     setIsTransitioning(true);
     setTimeout(() => {
@@ -403,12 +423,12 @@ const QuizV2 = () => {
   const handlePrevious = () => {
     if (currentQuestion > 0) {
       const prevQuestion = quizQuestionsV2[currentQuestion - 1];
-      
+
       // If going back from photos, don't remove photo points (they stay)
       // If going back from open, remove open points if they were added
       // If going back from size, just go back
       // If going back from regular question, remove the answer
-      
+
       if (prevQuestion.type === "single") {
         const lastAnswer = answers[answers.length - 1];
         if (lastAnswer) {
@@ -416,7 +436,7 @@ const QuizV2 = () => {
           setAnswers(answers.slice(0, -1));
         }
       }
-      
+
       setIsTransitioning(true);
       setTimeout(() => {
         setCurrentQuestion(currentQuestion - 1);
@@ -456,14 +476,14 @@ const QuizV2 = () => {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      
+
       {/* Points Animation Overlay */}
-      <PointsAnimation 
-        points={pointsJustEarned} 
+      <PointsAnimation
+        points={pointsJustEarned}
         show={showPointsAnimation}
         onComplete={() => setShowPointsAnimation(false)}
       />
-      
+
       <main className="flex-1 container mx-auto px-4 py-6 max-w-2xl">
         {/* Redo Mode Banner */}
         {isRedoMode && (
@@ -474,26 +494,25 @@ const QuizV2 = () => {
             </span>
           </div>
         )}
-        
-        <QuizProgressV2 
-          current={currentQuestion + 1} 
+
+        <QuizProgressV2
+          current={currentQuestion + 1}
           total={quizQuestionsV2.length}
           points={isRedoMode ? existingPoints : totalPoints}
           pointsJustEarned={isRedoMode ? 0 : pointsJustEarned}
         />
 
-        <div 
-          className={`mt-8 transition-all duration-300 ease-out ${
-            isTransitioning 
-              ? "opacity-0 translate-y-4" 
-              : "opacity-100 translate-y-0"
-          }`}
+        <div
+          className={`mt-8 transition-all duration-300 ease-out ${isTransitioning
+            ? "opacity-0 translate-y-4"
+            : "opacity-100 translate-y-0"
+            }`}
           key={currentQuestion}
         >
           {question.subtext && (
             <p className="text-accent text-sm mb-2 font-medium animate-slide-in-up">{question.subtext}</p>
           )}
-          
+
           <h2 className="font-serif text-2xl md:text-3xl mb-6 animate-slide-in-up" style={{ animationDelay: "50ms" }}>
             {question.question}
           </h2>
@@ -523,7 +542,7 @@ const QuizV2 = () => {
                 placeholder="Ex: Adoro peças confortáveis pra trabalhar de casa, gosto muito de azul e verde, evito estampas muito grandes..."
                 className="min-h-[120px] focus:ring-2 focus:ring-accent transition-all"
               />
-              
+
               {additionalNotes.trim() && (
                 <p className="text-sm text-amber-600 mt-2 flex items-center gap-1.5">
                   <Star className="h-4 w-4 fill-amber-500 text-amber-500" />
@@ -536,7 +555,7 @@ const QuizV2 = () => {
           {/* Size Question */}
           {isSizeQuestion && (
             <div className="animate-slide-in-up" style={{ animationDelay: "100ms" }}>
-              <SizeSelector 
+              <SizeSelector
                 selectedLetterSize={selectedLetterSize}
                 selectedNumberSize={selectedNumberSize}
                 onSelectLetter={handleSelectLetterSize}
@@ -549,8 +568,8 @@ const QuizV2 = () => {
           {question.type === "single" && (
             <div className="space-y-3">
               {question.options?.map((option, index) => (
-                <div 
-                  key={index} 
+                <div
+                  key={index}
                   className="animate-slide-in-up"
                   style={{ animationDelay: `${100 + index * 50}ms` }}
                 >
@@ -569,8 +588,8 @@ const QuizV2 = () => {
 
         <div className="mt-8 flex gap-4">
           {currentQuestion > 0 && (
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={handlePrevious}
               className="gap-2 transition-all hover:scale-105"
               disabled={isSubmitting || isTransitioning}
@@ -579,8 +598,8 @@ const QuizV2 = () => {
               Voltar
             </Button>
           )}
-          
-          <Button 
+
+          <Button
             onClick={handleNext}
             disabled={!canProceed || isSubmitting || isTransitioning}
             className="flex-1 gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
@@ -613,20 +632,20 @@ const QuizV2 = () => {
             )}
           </Button>
         </div>
-        
+
         {/* Points hint */}
         {question && question.type === "single" && (
           <p className="text-center text-xs text-muted-foreground mt-4 animate-fade-in">
             Esta pergunta vale <span className="font-medium text-amber-600">+{currentQuestionPoints} pontos</span>
           </p>
         )}
-        
+
         {question && question.type === "photos" && (
           <p className="text-center text-xs text-muted-foreground mt-4 animate-fade-in">
             Cada foto vale <span className="font-medium text-amber-600">+{PHOTO_UPLOAD_BONUS} pontos</span>
           </p>
         )}
-        
+
         {question && question.type === "open" && (
           <p className="text-center text-xs text-muted-foreground mt-4 animate-fade-in">
             Este campo vale <span className="font-medium text-amber-600">+{OPEN_FIELD_BONUS} pontos</span> se preenchido

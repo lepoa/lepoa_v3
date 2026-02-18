@@ -59,6 +59,7 @@ import { cn } from "@/lib/utils";
 import { buildWhatsAppLink, buildLepoaChargeMessage, displayInstagram } from "@/lib/whatsappHelpers";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { copyToClipboard } from "@/lib/clipboardUtils";
 import { PaymentValidationSection } from "./PaymentValidationSection";
 import { ManualPaymentModal } from "./ManualPaymentModal";
 import { RevalidatePaymentModal } from "@/components/RevalidatePaymentModal";
@@ -148,7 +149,7 @@ export function LiveOrderDetailDrawer({
   // Calculate hours since creation
   const hoursSinceCreation = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
   const isUrgent = (isAwaitingPayment || isAwaitingReturn) && hoursSinceCreation > 24;
-  
+
   // Get bag link
   const getBagLink = () => {
     const base = `${window.location.origin}/live-checkout/${order.id}`;
@@ -169,8 +170,12 @@ export function LiveOrderDetailDrawer({
   const copyChargeMessage = async () => {
     const link = getBagLink();
     const message = buildLepoaChargeMessage(link);
-    await navigator.clipboard.writeText(message);
-    toast.success("Mensagem copiada ✔️");
+    const success = await copyToClipboard(message);
+    if (success) {
+      toast.success("Mensagem copiada ✔️");
+    } else {
+      toast.error("Erro ao copiar. Tente selecionar o texto manualmente.");
+    }
   };
 
   // Register charge action
@@ -193,7 +198,7 @@ export function LiveOrderDetailDrawer({
     if (!customer?.whatsapp) return null;
 
     const items = order.items?.filter(i => ['reservado', 'confirmado'].includes(i.status)) || [];
-    const itemsList = items.map(i => 
+    const itemsList = items.map(i =>
       `• ${i.product?.name} (${(i.variante as any)?.tamanho || '-'}) x${i.qtd}`
     ).join('\n');
 
@@ -231,11 +236,15 @@ Pode me enviar? 😊`;
   };
 
   // Copy bag link
-  const copyBagLink = () => {
+  const copyBagLink = async () => {
     const base = `${window.location.origin}/sacola/${order.id}`;
     const url = order.public_token ? `${base}?token=${order.public_token}` : base;
-    navigator.clipboard.writeText(url);
-    toast.success("Link copiado!");
+    const success = await copyToClipboard(url);
+    if (success) {
+      toast.success("Link copiado!");
+    } else {
+      toast.error("Erro ao copiar.");
+    }
   };
 
   // Handle manual payment with proof
@@ -252,7 +261,7 @@ Pode me enviar? 😊`;
     setIsGeneratingLabel(true);
     const result = await onGenerateLabel(order.id);
     setIsGeneratingLabel(false);
-    
+
     if (result.success && result.labelUrl) {
       window.open(result.labelUrl, '_blank');
       toast.success("Etiqueta gerada com sucesso!");
@@ -274,18 +283,18 @@ Pode me enviar? 😊`;
   const handleSyncTracking = async () => {
     if (!order) return;
     setIsSyncingTracking(true);
-    
+
     try {
       const { data, error } = await supabase.functions.invoke('sync-live-cart-tracking', {
         body: { cartId: order.id }
       });
-      
+
       if (error) {
         console.error("Sync tracking error:", error);
         toast.error("Erro ao sincronizar rastreio");
         return;
       }
-      
+
       if (data.error) {
         if (data.status === 'tracking_not_found') {
           toast.info("Código de rastreio ainda não disponível", {
@@ -296,7 +305,7 @@ Pode me enviar? 😊`;
         }
         return;
       }
-      
+
       if (data.success && data.tracking_code) {
         toast.success(`Rastreio sincronizado: ${data.tracking_code}`);
         if (onTrackingSynced) {
@@ -329,7 +338,7 @@ Pode me enviar? 😊`;
   const getRevertOptions = (): OperationalStatus[] => {
     const status = order.operational_status;
     const options: OperationalStatus[] = [];
-    
+
     // Based on current status, show valid previous states
     if (status === 'entregue' || status === 'retirado') {
       if (order.delivery_method === 'correios') options.push('postado');
@@ -341,18 +350,18 @@ Pode me enviar? 😊`;
     if (status === 'preparar_envio' || status === 'em_rota' || status === 'retirada') options.push('pago');
     if (status === 'pago' && isAdmin) options.push('aguardando_retorno', 'aguardando_pagamento');
     if (status === 'aguardando_retorno') options.push('aguardando_pagamento');
-    
+
     return options;
   };
 
   // Get delivery display
-  const DeliveryIcon = order.delivery_method === 'correios' ? Truck 
-    : order.delivery_method === 'motoboy' ? Bike 
-    : Store;
+  const DeliveryIcon = order.delivery_method === 'correios' ? Truck
+    : order.delivery_method === 'motoboy' ? Bike
+      : Store;
 
-  const deliveryLabel = order.delivery_method === 'correios' ? 'Correios' 
-    : order.delivery_method === 'motoboy' ? 'Motoboy' 
-    : 'Retirada na Loja';
+  const deliveryLabel = order.delivery_method === 'correios' ? 'Correios'
+    : order.delivery_method === 'motoboy' ? 'Motoboy'
+      : 'Retirada na Loja';
 
   return (
     <Sheet open={!!order} onOpenChange={() => onClose()}>
@@ -460,17 +469,17 @@ Pode me enviar? 😊`;
             <div className="space-y-3">
               <h4 className="font-medium">Itens do Pedido</h4>
               {order.items?.map((item) => (
-                <div 
-                  key={item.id} 
+                <div
+                  key={item.id}
                   className={cn(
                     "flex items-center gap-3 p-2 rounded-lg border",
                     item.status === 'cancelado' && "opacity-50 bg-muted"
                   )}
                 >
                   {item.product?.image_url ? (
-                    <img 
-                      src={item.product.image_url} 
-                      alt="" 
+                    <img
+                      src={item.product.image_url}
+                      alt=""
                       className="w-12 h-12 rounded object-cover"
                     />
                   ) : (
@@ -561,7 +570,7 @@ Pode me enviar? 😊`;
                     Frete: {formatPrice(order.frete)}
                   </div>
                 )}
-                
+
                 {/* Shipping address for Correios */}
                 {order.delivery_method === 'correios' && (
                   <div className="bg-muted/50 rounded-lg p-3 space-y-2" key={shippingDataKey}>
@@ -569,7 +578,7 @@ Pode me enviar? 😊`;
                       const snapshot = order.shipping_address_snapshot as ShippingAddressData | null;
                       const missingFields = getMissingShippingFields(snapshot);
                       const hasAllData = missingFields.length === 0;
-                      
+
                       // Show form if explicitly opened or if data is missing
                       if (showShippingForm || !hasAllData) {
                         return (
@@ -580,9 +589,9 @@ Pode me enviar? 😊`;
                                 Completar dados de envio
                               </h4>
                               {hasAllData && (
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
                                   onClick={() => setShowShippingForm(false)}
                                 >
                                   <X className="h-4 w-4" />
@@ -604,15 +613,15 @@ Pode me enviar? 😊`;
                             />
                             {order.live_customer?.whatsapp && (
                               <div className="pt-2 border-t">
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
                                   className="text-muted-foreground w-full"
                                   asChild
                                 >
-                                  <a 
-                                    href={buildAddressRequestWhatsApp() || '#'} 
-                                    target="_blank" 
+                                  <a
+                                    href={buildAddressRequestWhatsApp() || '#'}
+                                    target="_blank"
                                     rel="noopener noreferrer"
                                   >
                                     <MessageCircle className="h-4 w-4 mr-2" />
@@ -624,7 +633,7 @@ Pode me enviar? 😊`;
                           </div>
                         );
                       }
-                      
+
                       // Show address data with edit button
                       return (
                         <>
@@ -645,9 +654,9 @@ Pode me enviar? 😊`;
                                 )}
                               </div>
                             </div>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               className="shrink-0"
                               onClick={() => setShowShippingForm(true)}
                             >
@@ -659,9 +668,9 @@ Pode me enviar? 😊`;
                             const hasValidTracking = isValidTrackingCode(order.shipping_tracking_code);
                             const hasLabel = !!order.me_label_url || !!order.me_shipment_id;
                             const showTrackingSection = hasLabel || order.shipping_tracking_code;
-                            
+
                             if (!showTrackingSection) return null;
-                            
+
                             return (
                               <div className="pt-3 mt-3 border-t space-y-2">
                                 {hasValidTracking ? (
@@ -819,9 +828,9 @@ Pode me enviar? 😊`;
                 </div>
               )}
               {getInstagramProfileLink() && (
-                <a 
-                  href={getInstagramProfileLink()!} 
-                  target="_blank" 
+                <a
+                  href={getInstagramProfileLink()!}
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-blue-600 hover:underline flex items-center gap-1"
                 >
@@ -855,9 +864,9 @@ Pode me enviar? 😊`;
                 <div className="flex gap-2">
                   {order.live_customer?.whatsapp && (
                     <Button variant="outline" className="flex-1" asChild>
-                      <a 
-                        href={buildChargeWhatsApp() || '#'} 
-                        target="_blank" 
+                      <a
+                        href={buildChargeWhatsApp() || '#'}
+                        target="_blank"
                         rel="noopener noreferrer"
                       >
                         <MessageCircle className="h-4 w-4 mr-2" />
@@ -874,9 +883,9 @@ Pode me enviar? 😊`;
                 {/* Instagram profile link for Direct */}
                 {getInstagramProfileLink() && (
                   <Button variant="outline" className="w-full" asChild>
-                    <a 
-                      href={getInstagramProfileLink()!} 
-                      target="_blank" 
+                    <a
+                      href={getInstagramProfileLink()!}
+                      target="_blank"
                       rel="noopener noreferrer"
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
@@ -888,15 +897,15 @@ Pode me enviar? 😊`;
                 {/* Register charge separately */}
                 {onRecordCharge && (
                   <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="flex-1 border-amber-300 text-amber-700 hover:bg-amber-50"
                       onClick={() => handleRecordCharge('whatsapp')}
                     >
                       Registrar via WhatsApp
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-50"
                       onClick={() => handleRecordCharge('direct')}
                     >
@@ -905,13 +914,13 @@ Pode me enviar? 😊`;
                   </div>
                 )}
               </div>
-              
+
               <Separator />
-              
+
               {/* ETAPA 2: Payment Section - Only enabled after delivery is confirmed */}
               {(() => {
                 const deliveryReady = isDeliveryConfiguredForPayment(order.delivery_method, order.frete);
-                
+
                 return (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
@@ -930,7 +939,7 @@ Pode me enviar? 😊`;
                     </div>
 
                     {/* Single "Pago" button opens manual payment modal - LOCKED until delivery is confirmed */}
-                    <Button 
+                    <Button
                       className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
                       onClick={() => setShowManualPayment(true)}
                       disabled={!deliveryReady}
@@ -950,7 +959,7 @@ Pode me enviar? 😊`;
                     )}
 
                     {/* Revalidate from Mercado Pago - always enabled (uses checkout total) */}
-                    <Button 
+                    <Button
                       variant="outline"
                       className="w-full gap-2 border-amber-300 text-amber-700 hover:bg-amber-50"
                       onClick={() => setShowRevalidateModal(true)}
@@ -969,14 +978,14 @@ Pode me enviar? 😊`;
             const opStatus = order.operational_status;
             const method = order.delivery_method;
             const isFinalStatus = opStatus === 'entregue' || opStatus === 'retirado';
-            
+
             // If already final, don't show any logistics buttons
             if (isFinalStatus) return null;
-            
+
             return (
               <div className="space-y-3">
                 <Separator />
-                
+
                 {/* CORREIOS FLOW: pago → preparar_envio → etiqueta_gerada → postado → entregue */}
                 {method === 'correios' && (
                   <>
@@ -985,14 +994,14 @@ Pode me enviar? 😊`;
                       const snapshot = order.shipping_address_snapshot as ShippingAddressData | null;
                       const missingFields = getMissingShippingFields(snapshot);
                       const canGenerateLabel = missingFields.length === 0;
-                      
+
                       return (
                         <div className="space-y-2">
                           <div className="text-sm text-muted-foreground">
                             Próximo passo: Gerar etiqueta Melhor Envio
                           </div>
-                          <Button 
-                            className="w-full" 
+                          <Button
+                            className="w-full"
                             onClick={handleGenerateLabel}
                             disabled={isGeneratingLabel || !canGenerateLabel}
                           >
@@ -1009,9 +1018,9 @@ Pode me enviar? 😊`;
                                 <AlertTriangle className="h-3 w-3" />
                                 Complete os dados de envio acima para gerar a etiqueta
                               </div>
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
+                              <Button
+                                variant="outline"
+                                size="sm"
                                 className="w-full border-amber-300 text-amber-700 hover:bg-amber-100"
                                 onClick={() => setShowShippingForm(true)}
                               >
@@ -1023,7 +1032,7 @@ Pode me enviar? 😊`;
                         </div>
                       );
                     })()}
-                    
+
                     {/* Status: etiqueta_gerada - Can print or mark as posted */}
                     {opStatus === 'etiqueta_gerada' && order.me_label_url && (
                       <div className="flex gap-2">
@@ -1033,7 +1042,7 @@ Pode me enviar? 😊`;
                             Imprimir Etiqueta
                           </a>
                         </Button>
-                        <Button 
+                        <Button
                           className="flex-1"
                           onClick={() => onMarkAsPosted(order.id)}
                         >
@@ -1042,11 +1051,11 @@ Pode me enviar? 😊`;
                         </Button>
                       </div>
                     )}
-                    
+
                     {/* Status: postado - Can mark as delivered ONLY with valid tracking */}
                     {opStatus === 'postado' && (() => {
                       const hasValidTracking = isValidTrackingCode(order.shipping_tracking_code);
-                      
+
                       if (!hasValidTracking) {
                         return (
                           <div className="space-y-2">
@@ -1076,10 +1085,10 @@ Pode me enviar? 😊`;
                           </div>
                         );
                       }
-                      
+
                       return (
-                        <Button 
-                          className="w-full bg-emerald-600 hover:bg-emerald-700" 
+                        <Button
+                          className="w-full bg-emerald-600 hover:bg-emerald-700"
                           onClick={() => onMarkAsDelivered(order.id)}
                         >
                           <CheckCircle className="h-4 w-4 mr-2" />
@@ -1089,25 +1098,25 @@ Pode me enviar? 😊`;
                     })()}
                   </>
                 )}
-                
+
                 {/* MOTOBOY FLOW: pago → em_rota → entregue */}
                 {method === 'motoboy' && (
                   <>
                     {/* Status: pago - Need to mark as "em rota" first */}
                     {opStatus === 'pago' && (
-                      <Button 
-                        className="w-full" 
+                      <Button
+                        className="w-full"
                         onClick={() => onMarkAsDelivered(order.id)}
                       >
                         <Bike className="h-4 w-4 mr-2" />
                         Marcar Em Rota
                       </Button>
                     )}
-                    
+
                     {/* Status: em_rota - Can mark as delivered */}
                     {opStatus === 'em_rota' && (
-                      <Button 
-                        className="w-full bg-emerald-600 hover:bg-emerald-700" 
+                      <Button
+                        className="w-full bg-emerald-600 hover:bg-emerald-700"
                         onClick={() => onMarkAsDelivered(order.id)}
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
@@ -1116,25 +1125,25 @@ Pode me enviar? 😊`;
                     )}
                   </>
                 )}
-                
+
                 {/* RETIRADA FLOW: pago → retirada → entregue */}
                 {method === 'retirada' && (
                   <>
                     {/* Status: pago - Need to mark as "aguardando retirada" first */}
                     {opStatus === 'pago' && (
-                      <Button 
-                        className="w-full" 
+                      <Button
+                        className="w-full"
                         onClick={() => onMarkAsPickedUp(order.id)}
                       >
                         <Store className="h-4 w-4 mr-2" />
                         Marcar Aguardando Retirada
                       </Button>
                     )}
-                    
+
                     {/* Status: retirada - Can mark as picked up / delivered */}
                     {opStatus === 'retirada' && (
-                      <Button 
-                        className="w-full bg-emerald-600 hover:bg-emerald-700" 
+                      <Button
+                        className="w-full bg-emerald-600 hover:bg-emerald-700"
                         onClick={() => onMarkAsPickedUp(order.id)}
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
@@ -1151,9 +1160,9 @@ Pode me enviar? 😊`;
           {onRevertStatus && getRevertOptions().length > 0 && !isCancelled && (
             <div className="pt-2 border-t border-border/40">
               {!showRevertDialog ? (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="w-full text-muted-foreground hover:text-foreground"
                   onClick={() => setShowRevertDialog(true)}
                 >
@@ -1184,9 +1193,9 @@ Pode me enviar? 😊`;
                       className="text-sm"
                     />
                   )}
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       setShowRevertDialog(false);
                       setRevertReason("");

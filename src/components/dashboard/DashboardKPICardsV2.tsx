@@ -1,13 +1,14 @@
-import { 
-  DollarSign, 
-  ShoppingBag, 
-  Target, 
+import {
+  DollarSign,
+  ShoppingBag,
+  Target,
   TrendingUp,
   TrendingDown,
   Package,
   AlertTriangle,
   Clock,
   Info,
+  UsersRound,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -67,7 +68,7 @@ function KPICard({ icon: Icon, label, value, kpi, tooltip, onClick, variant = "d
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Card 
+          <Card
             className={cn(
               "cursor-pointer transition-all group border min-h-[100px]",
               bgClass
@@ -84,11 +85,11 @@ function KPICard({ icon: Icon, label, value, kpi, tooltip, onClick, variant = "d
                 </div>
                 <Info className="h-3 w-3 text-muted-foreground/50 shrink-0 hidden sm:block" />
               </div>
-              
+
               <p className="text-lg sm:text-2xl font-semibold text-foreground tracking-tight truncate">
                 {value}
               </p>
-              
+
               {TrendIcon && kpi.changePercent !== 0 && (
                 <div className={cn(
                   "flex items-center gap-1 mt-1 text-[10px] sm:text-xs font-medium",
@@ -201,14 +202,19 @@ export function DashboardKPICardsV2({ kpis, onKPIClick }: DashboardKPICardsV2Pro
           </CardContent>
         </Card>
 
-        <Card className="bg-card/50 shrink-0 w-[140px] sm:w-auto">
+        <Card className="bg-card/50 cursor-pointer hover:bg-card transition-colors shrink-0 w-[140px] sm:w-auto" onClick={() => onKPIClick("ticket")}>
           <CardContent className="p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1">
-                <Clock className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground whitespace-nowrap">Tempo</span>
+                <UsersRound className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Novos Cli.</span>
               </div>
-              <span className="text-base sm:text-lg font-semibold">{kpis.tempoMedioPagamento.toFixed(0)}h</span>
+              <span className="text-base sm:text-lg font-semibold">
+                {kpis.novosClientes.value}
+                {kpis.novosClientes.change > 0 && (
+                  <span className="text-xs text-primary ml-1">+{kpis.novosClientes.change}</span>
+                )}
+              </span>
             </div>
           </CardContent>
         </Card>

@@ -54,6 +54,7 @@ interface CartItem {
   quantity: number;
   unit_price: number;
   status: string;
+  is_gift?: boolean;
 }
 
 export default function LiveCheckout() {
@@ -169,7 +170,11 @@ export default function LiveCheckout() {
       } else if (result.customer_whatsapp) {
         phoneMask.setDisplayValue(result.customer_whatsapp);
       }
-      if (result.known_email) setEmail(result.known_email);
+      if (result.known_email) {
+        setEmail(result.known_email);
+      } else if (user?.email) {
+        setEmail(user.email);
+      }
 
       // Pre-fill address from snapshot if exists
       if (result.shipping_address_snapshot) {
@@ -284,6 +289,7 @@ export default function LiveCheckout() {
         p_shipping_service_name: deliveryMethod === "shipping" && selectedShipping ? (selectedShipping.name || selectedShipping.serviceName) : null,
         p_shipping_deadline_days: deliveryMethod === "shipping" && selectedShipping ? (selectedShipping.deliveryDays || selectedShipping.deliveryTime || null) : null,
         p_customer_notes: deliveryNotes?.trim() || null,
+        p_user_id: user?.id || null, // EXPLICIT USER ID
       });
 
       if (rpcError) throw rpcError;
@@ -408,7 +414,7 @@ export default function LiveCheckout() {
     );
   }
 
-  const activeItems = (cart?.items || []).filter(item => ["reservado", "confirmado", "expirado"].includes(item.status));
+  const activeItems = (cart?.items || []).filter(item => ["reservado", "confirmado", "expirado", "pending_separation"].includes(item.status));
 
   const steps = [
     { id: "cart", label: "Carrinho", icon: ShoppingCart },
@@ -468,19 +474,34 @@ export default function LiveCheckout() {
             </CardHeader>
             <CardContent className="space-y-4">
               {activeItems.map((item) => (
-                <div key={item.id} className="flex gap-3 p-3 border rounded-lg">
-                  {item.product_image && (
+                <div key={item.id} className={`flex gap-3 p-3 border rounded-lg ${item.is_gift ? "bg-green-50/50 border-green-100" : ""}`}>
+                  {item.product_image ? (
                     <img src={item.product_image} alt={item.product_name} className="w-16 h-16 object-cover rounded-md" />
-                  )}
+                  ) : item.is_gift ? (
+                    <div className="w-16 h-16 bg-green-100 rounded-md flex items-center justify-center">
+                      <Package className="h-8 w-8 text-green-600" />
+                    </div>
+                  ) : null}
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-medium truncate">{item.product_name}</h4>
+                    <div className="flex justify-between items-start">
+                      <h4 className="font-medium truncate text-sm sm:text-base">
+                        {item.product_name}
+                      </h4>
+                      {item.is_gift && (
+                        <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
+                          Brinde
+                        </span>
+                      )}
+                    </div>
                     <div className="text-sm text-muted-foreground">
-                      {item.size && <span>Tam: {item.size}</span>}
-                      {item.color && <span> • {item.color}</span>}
+                      {item.size && item.size !== "Único" && <span>Tam: {item.size}</span>}
+                      {item.color && item.color !== "Único" && <span> • {item.color}</span>}
                     </div>
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-sm">Qtd: {item.quantity}</span>
-                      <span className="font-semibold">{formatPrice(item.unit_price * item.quantity)}</span>
+                      <span className={`font-semibold ${item.is_gift ? "text-green-600" : ""}`}>
+                        {item.is_gift ? "Grátis" : formatPrice(item.unit_price * item.quantity)}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -529,7 +550,7 @@ export default function LiveCheckout() {
               </div>
 
               <div className="space-y-2">
-                <Label>E-mail <span className="text-xs text-muted-foreground">(recomendado — reduz recusa no pagamento)</span></Label>
+                <Label>E-mail</Label>
                 <Input
                   type="email"
                   value={email}

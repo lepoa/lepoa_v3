@@ -11,37 +11,24 @@ interface ApplyGiftParams {
   liveEventId?: string;
   channel: "catalog" | "live";
   paymentOrder?: number; // For first_n_paid condition
+  simulateOnly?: boolean; // New: If true, don't insert to DB, just return eligible gifts
 }
 
 interface AppliedGift {
   giftId: string;
   giftName: string;
+  giftImage?: string | null; // Added image
   ruleId: string;
   qty: number;
 }
 
-interface LiveCartGift {
-  id: string;
-  gift_id: string;
-  gift: {
-    id: string;
-    name: string;
-    image_url: string | null;
-    sku: string | null;
-  } | null;
-  qty: number;
-  status: string;
-  applied_by_rule_id: string | null;
-  applied_by_raffle_id: string | null;
-}
+// ... existing interfaces ...
 
 export function useGiftEngine() {
-  /**
-   * Fetch applicable rules for a given context
-   */
+  // ... existing fetchApplicableRules ...
   const fetchApplicableRules = useCallback(async (params: ApplyGiftParams): Promise<GiftRule[]> => {
     const now = new Date().toISOString();
-    
+
     let query = supabase
       .from("gift_rules")
       .select(`
@@ -61,7 +48,7 @@ export function useGiftEngine() {
     }
 
     const { data, error } = await query;
-    
+
     if (error) {
       console.error("Error fetching gift rules:", error);
       return [];
@@ -84,11 +71,9 @@ export function useGiftEngine() {
     return rules;
   }, []);
 
-  /**
-   * Check if a rule's condition is met
-   */
+  // ... existing checkCondition ...
   const checkCondition = useCallback(async (
-    rule: GiftRule, 
+    rule: GiftRule,
     params: ApplyGiftParams
   ): Promise<boolean> => {
     switch (rule.condition_type) {
@@ -113,9 +98,7 @@ export function useGiftEngine() {
     }
   }, []);
 
-  /**
-   * Check if customer already received this gift (max_per_customer)
-   */
+  // ... existing checkCustomerLimit ...
   const checkCustomerLimit = useCallback(async (
     rule: GiftRule,
     customerId: string | undefined,
@@ -144,7 +127,7 @@ export function useGiftEngine() {
           .from("live_carts")
           .select("id")
           .eq("live_customers.instagram_handle", cart.live_customer.instagram_handle);
-        
+
         if (carts && carts.length > 0) {
           query = query.in("live_cart_id", carts.map(c => c.id));
         }
@@ -155,9 +138,7 @@ export function useGiftEngine() {
     return (count || 0) < rule.max_per_customer;
   }, []);
 
-  /**
-   * Check if max total awards has been reached
-   */
+  // ... existing checkTotalLimit ...
   const checkTotalLimit = useCallback((rule: GiftRule): boolean => {
     if (!rule.max_total_awards) return true;
     return rule.current_awards_count < rule.max_total_awards;
@@ -176,8 +157,12 @@ export function useGiftEngine() {
     // Check if gift has stock
     if (!gift.unlimited_stock && gift.stock_qty < rule.gift_qty) {
       console.log(`Gift ${gift.name} out of stock`);
-      // TODO: Record out of stock event
       return false;
+    }
+
+    // SIMULATION MODE
+    if (params.simulateOnly) {
+      return true;
     }
 
     try {
@@ -221,54 +206,58 @@ export function useGiftEngine() {
     params: ApplyGiftParams
   ): Promise<AppliedGift[]> => {
     const appliedGifts: AppliedGift[] = [];
-    
+
     try {
       const rules = await fetchApplicableRules(params);
-      
+
       for (const rule of rules) {
         // Check all conditions
         const conditionMet = await checkCondition(rule, params);
         if (!conditionMet) continue;
 
-        const withinCustomerLimit = await checkCustomerLimit(
-          rule, 
-          params.customerId, 
-          params.liveCartId
-        );
-        if (!withinCustomerLimit) continue;
+        // Skip limits check for simulation if we don't have customer context
+        if (!params.simulateOnly) {
+          const withinCustomerLimit = await checkCustomerLimit(
+            rule,
+            params.customerId,
+            params.liveCartId
+          );
+          if (!withinCustomerLimit) continue;
 
-        const withinTotalLimit = checkTotalLimit(rule);
-        if (!withinTotalLimit) continue;
+          const withinTotalLimit = checkTotalLimit(rule);
+          if (!withinTotalLimit) continue;
 
-        // Check if this gift was already applied
-        const existingQuery = supabase
-          .from("order_gifts")
-          .select("id")
-          .eq("gift_id", rule.gift_id)
-          .eq("applied_by_rule_id", rule.id);
-        
-        if (params.orderId) {
-          existingQuery.eq("order_id", params.orderId);
-        } else if (params.liveCartId) {
-          existingQuery.eq("live_cart_id", params.liveCartId);
+          // Check if this gift was already applied
+          const existingQuery = supabase
+            .from("order_gifts")
+            .select("id")
+            .eq("gift_id", rule.gift_id)
+            .eq("applied_by_rule_id", rule.id);
+
+          if (params.orderId) {
+            existingQuery.eq("order_id", params.orderId);
+          } else if (params.liveCartId) {
+            existingQuery.eq("live_cart_id", params.liveCartId);
+          }
+
+          const { data: existing } = await existingQuery;
+          if (existing && existing.length > 0) continue;
         }
 
-        const { data: existing } = await existingQuery;
-        if (existing && existing.length > 0) continue;
-
-        // Apply the gift
+        // Apply the gift (or simulate)
         const applied = await applyGift(rule, params);
         if (applied && rule.gift) {
           appliedGifts.push({
             giftId: rule.gift.id,
             giftName: rule.gift.name,
+            giftImage: rule.gift.image_url,
             ruleId: rule.id,
             qty: rule.gift_qty,
           });
         }
       }
 
-      if (appliedGifts.length > 0) {
+      if (!params.simulateOnly && appliedGifts.length > 0) {
         toast.success(`🎁 Brinde aplicado: ${appliedGifts.map(g => g.giftName).join(", ")}`);
       }
     } catch (err) {
@@ -311,7 +300,7 @@ export function useGiftEngine() {
 
         // Re-check condition
         const stillQualifies = await checkCondition(rule, params);
-        
+
         if (!stillQualifies) {
           // Remove the gift
           await supabase

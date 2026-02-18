@@ -212,7 +212,7 @@ export const styleProfilesV2: Record<string, StyleProfileV2> = {
 
 export function calculateStyleProfileV2(answers: { points: { elegante: number; classica: number; minimal: number; romantica: number } }[]): StyleProfileV2 {
   const totals = { elegante: 0, classica: 0, minimal: 0, romantica: 0 };
-  
+
   answers.forEach(answer => {
     if (answer.points) {
       totals.elegante += answer.points.elegante || 0;
@@ -226,18 +226,33 @@ export function calculateStyleProfileV2(answers: { points: { elegante: number; c
   return styleProfilesV2[winner as keyof typeof styleProfilesV2];
 }
 
-// Level thresholds exported for progress calculations
-export const LEVEL_THRESHOLDS = [0, 100, 200, 350, 500];
-export const LEVEL_TITLES = ["Descoberta", "Clareza", "Refinamento", "Assinatura", "Provador VIP"];
+import { getTierFromPoints, LOYALTY_TIERS } from "./loyaltyConfig";
 
-// NEW LEVEL SYSTEM - Slower progression
-// After 8 questions (max ~100pts), user should reach Level 2 max
+// Level thresholds exported for progress calculations
+// Using Loyalty Config now
+export const LEVEL_THRESHOLDS = [
+  LOYALTY_TIERS.poa.minPoints,
+  LOYALTY_TIERS.poa_gold.minPoints,
+  LOYALTY_TIERS.poa_platinum.minPoints,
+  LOYALTY_TIERS.poa_black.minPoints
+];
+
+export const LEVEL_TITLES = [
+  LOYALTY_TIERS.poa.name,
+  LOYALTY_TIERS.poa_gold.name,
+  LOYALTY_TIERS.poa_platinum.name,
+  LOYALTY_TIERS.poa_black.name
+];
+
+// NEW LEVEL SYSTEM - Unified with Loyalty Club
 export function getLevelFromPoints(points: number): { level: number; title: string; nextLevel: number; minPoints: number } {
-  if (points >= 500) return { level: 5, title: "Provador VIP", nextLevel: 999, minPoints: 500 };
-  if (points >= 350) return { level: 4, title: "Assinatura", nextLevel: 500, minPoints: 350 };
-  if (points >= 200) return { level: 3, title: "Refinamento", nextLevel: 350, minPoints: 200 };
-  if (points >= 100) return { level: 2, title: "Clareza", nextLevel: 200, minPoints: 100 };
-  return { level: 1, title: "Descoberta", nextLevel: 100, minPoints: 0 };
+  const tier = getTierFromPoints(points);
+
+  if (tier.id === "poa_black") return { level: 3, title: tier.name, nextLevel: 99999, minPoints: tier.minPoints };
+  if (tier.id === "poa_platinum") return { level: 2, title: tier.name, nextLevel: LOYALTY_TIERS.poa_black.minPoints, minPoints: tier.minPoints };
+  if (tier.id === "poa_gold") return { level: 1, title: tier.name, nextLevel: LOYALTY_TIERS.poa_platinum.minPoints, minPoints: tier.minPoints };
+
+  return { level: 0, title: LOYALTY_TIERS.poa.name, nextLevel: LOYALTY_TIERS.poa_gold.minPoints, minPoints: 0 };
 }
 
 // Points calculation helper

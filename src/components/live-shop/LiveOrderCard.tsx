@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 import { buildWhatsAppLink, buildLepoaChargeMessage, displayInstagram, getInstagramProfileUrl } from "@/lib/whatsappHelpers";
 import { toast } from "sonner";
+import { copyToClipboard } from "@/lib/clipboardUtils";
 import type { LiveOrderCart, UrgencyInfo } from "@/hooks/useLiveOrders";
 
 interface LiveOrderCardProps {
@@ -79,7 +80,7 @@ export function LiveOrderCard({
   };
 
   const isPaid = order.status === 'pago';
-  const isAwaitingPayment = order.status === 'aguardando_pagamento' || order.status === 'aberto' || 
+  const isAwaitingPayment = order.status === 'aguardando_pagamento' || order.status === 'aberto' ||
     order.operational_status === 'aguardando_pagamento';
   const isAwaitingReturn = order.operational_status === 'aguardando_retorno';
   const isCancelled = order.status === 'cancelado';
@@ -105,31 +106,28 @@ export function LiveOrderCard({
       }
       return { text: 'Nunca cobrada', needsCharge: true };
     }
-    
+
     const hoursSinceLastCharge = (Date.now() - new Date(order.last_charge_at).getTime()) / (1000 * 60 * 60);
     if (hoursSinceLastCharge > 24) {
       return { text: `Cobrar novamente (+${Math.floor(hoursSinceLastCharge)}h)`, needsCharge: true };
     }
-    
-    return { 
-      text: `Cobrada ${formatDistanceToNow(new Date(order.last_charge_at), { locale: ptBR, addSuffix: true })}`, 
-      needsCharge: false 
+
+    return {
+      text: `Cobrada ${formatDistanceToNow(new Date(order.last_charge_at), { locale: ptBR, addSuffix: true })}`,
+      needsCharge: false
     };
   };
 
   // Get delivery icon
-  const DeliveryIcon = order.delivery_method === 'correios' ? Truck 
-    : order.delivery_method === 'motoboy' ? Bike 
-    : Store;
+  const DeliveryIcon = order.delivery_method === 'correios' ? Truck
+    : order.delivery_method === 'motoboy' ? Bike
+      : Store;
 
   // Get status display - CLEAN, ELEGANT, MINIMAL
   const getStatusInfo = () => {
     if (isCancelled) return { label: 'Cancelado', color: 'text-muted-foreground bg-muted border-muted' };
     if (isFinal) return { label: 'Entregue ✓', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
     if (needsValidation) return { label: 'Validar Pagamento', color: 'text-violet-700 bg-violet-50 border-violet-200' };
-    if (isAwaitingReturn) return { label: 'Aguardando Retorno', color: 'text-orange-700 bg-orange-50 border-orange-200' };
-    if (isAwaitingPayment && !isPaid) return { label: 'Aguardando Pagamento', color: 'text-amber-700 bg-amber-50 border-amber-200' };
-    
     if (isPaid) {
       if (order.operational_status === 'preparar_envio') {
         return { label: 'Preparar Envio', color: 'text-blue-700 bg-blue-50 border-blue-200' };
@@ -148,6 +146,9 @@ export function LiveOrderCard({
       }
       return { label: 'Pago', color: 'text-green-700 bg-green-50 border-green-200' };
     }
+
+    if (isAwaitingReturn) return { label: 'Aguardando Retorno', color: 'text-orange-700 bg-orange-50 border-orange-200' };
+    if (isAwaitingPayment && !isPaid) return { label: 'Aguardando Pagamento', color: 'text-amber-700 bg-amber-50 border-amber-200' };
     return null;
   };
 
@@ -155,8 +156,12 @@ export function LiveOrderCard({
   const copyLinkWithMessage = async () => {
     const link = getBagLink();
     const message = buildLepoaChargeMessage(link, order.bag_number || undefined);
-    await navigator.clipboard.writeText(message);
-    toast.success("Mensagem copiada com link!");
+    const success = await copyToClipboard(message);
+    if (success) {
+      toast.success("Mensagem copiada com link!");
+    } else {
+      toast.error("Erro ao copiar.");
+    }
   };
 
   // Open WhatsApp with sophisticated message - SEPARATE from registering charge
@@ -203,7 +208,7 @@ export function LiveOrderCard({
 
   if (compact) {
     return (
-      <Card 
+      <Card
         className={cn(
           "p-3 cursor-pointer hover:shadow-sm transition-all border-border/60",
           isUrgent && "border-l-2 border-l-amber-500",
@@ -232,7 +237,7 @@ export function LiveOrderCard({
   }
 
   return (
-    <Card 
+    <Card
       className={cn(
         "p-3 sm:p-4 transition-all border-border/60",
         isUrgent && "border-l-4 border-l-amber-500 bg-amber-50/20",
@@ -247,9 +252,9 @@ export function LiveOrderCard({
           <div className="flex items-center gap-1 min-w-0">
             <span className="font-semibold text-sm sm:text-base truncate">{instagramDisplay}</span>
             {instagramUrl && (
-              <a 
+              <a
                 href={instagramUrl}
-                target="_blank" 
+                target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
                 className="text-muted-foreground hover:text-blue-600 shrink-0"
@@ -274,9 +279,9 @@ export function LiveOrderCard({
         <div className="flex items-center gap-1 text-muted-foreground">
           <DeliveryIcon className="h-3.5 w-3.5" />
           <span className="text-[10px] sm:text-xs">
-            {order.delivery_method === 'correios' ? 'Correios' 
-              : order.delivery_method === 'motoboy' ? 'Motoboy' 
-              : 'Retirada'}
+            {order.delivery_method === 'correios' ? 'Correios'
+              : order.delivery_method === 'motoboy' ? 'Motoboy'
+                : 'Retirada'}
           </span>
         </div>
 
@@ -337,9 +342,9 @@ export function LiveOrderCard({
             <>
               {/* WhatsApp Charge Button */}
               {order.live_customer?.whatsapp && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="h-9 sm:h-8 text-xs flex-1 sm:flex-none min-w-0"
                   onClick={openWhatsApp}
                   title="Abrir WhatsApp com mensagem"
@@ -348,11 +353,11 @@ export function LiveOrderCard({
                   <span className="hidden sm:inline">{isAwaitingReturn ? 'Reenviar' : 'Cobrar'}</span>
                 </Button>
               )}
-              
+
               {/* Copy link + message */}
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 className="h-9 sm:h-8 text-xs"
                 onClick={copyLinkWithMessage}
                 title="Copiar mensagem com link"
@@ -362,9 +367,9 @@ export function LiveOrderCard({
               </Button>
 
               {/* Register charge */}
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 className="h-9 sm:h-8 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
                 onClick={handleRegisterCharge}
                 title="Registrar cobrança"
@@ -372,11 +377,11 @@ export function LiveOrderCard({
                 <Check className="h-3.5 w-3.5 sm:mr-1" />
                 <span className="hidden sm:inline">Registrar</span>
               </Button>
-              
+
               {/* Manual payment */}
-              <Button 
-                variant="default" 
-                size="sm" 
+              <Button
+                variant="default"
+                size="sm"
                 className="h-9 sm:h-8 text-xs bg-emerald-600 hover:bg-emerald-700"
                 onClick={() => onOpenManualPayment(order.id)}
                 title="Marcar como pago"
@@ -389,9 +394,9 @@ export function LiveOrderCard({
 
           {/* Paid Actions - Advance status (ONLY when payment is validated or not manual) */}
           {isPaid && !isFinal && !isCancelled && !needsValidation && (
-            <Button 
-              variant="default" 
-              size="sm" 
+            <Button
+              variant="default"
+              size="sm"
               className="h-9 sm:h-8 text-xs"
               onClick={() => onAdvanceStatus(order.id)}
               title="Avançar para próximo status"
@@ -402,9 +407,9 @@ export function LiveOrderCard({
           )}
 
           {/* View Details */}
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             className="h-9 sm:h-8 text-xs text-muted-foreground hover:text-foreground"
             onClick={onSelect}
           >

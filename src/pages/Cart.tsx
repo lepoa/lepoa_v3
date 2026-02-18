@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { ShoppingBag, Trash2, Plus, Minus, ArrowLeft, Package, Tag, AlertCircle } from "lucide-react";
+import { ShoppingBag, Trash2, Plus, Minus, ArrowLeft, Package, Tag, AlertCircle, Gift } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,12 +17,12 @@ function formatPrice(price: number): string {
 
 const Cart = () => {
   const navigate = useNavigate();
-  const { items, removeItem, updateQuantity, total, itemCount } = useCart();
-  
+  const { items, removeItem, updateQuantity, total, itemCount, gifts } = useCart();
+
   // Get product IDs from cart to fetch available stock
   const productIds = items.map(item => item.productId);
   const { getAvailable, isLoading: stockLoading } = useProductAvailableStock(productIds);
-  
+
   // Handle quantity increment with stock validation
   const handleIncrement = (productId: string, size: string, currentQty: number) => {
     const availableStock = getAvailable(productId, size);
@@ -54,7 +54,7 @@ const Cart = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container mx-auto px-4 py-8 max-w-lg">
         <Button
           variant="ghost"
@@ -88,7 +88,7 @@ const Cart = () => {
                     <Package className="h-8 w-8 text-muted-foreground" />
                   )}
                 </div>
-                
+
                 <div className="flex-1">
                   <h3 className="font-medium line-clamp-1">{item.name}</h3>
                   <p className="text-sm text-muted-foreground">
@@ -163,6 +163,58 @@ const Cart = () => {
             </Card>
           ))}
         </div>
+
+        {/* Render Gifts */}
+        {gifts && gifts.length > 0 && (
+          <div className="space-y-4 mb-8">
+            <div className="flex items-center gap-2 mb-2">
+              <Gift className="h-5 w-5 text-green-600" />
+              <h2 className="font-serif text-lg text-green-700">Seus Brindes</h2>
+            </div>
+            {gifts.map((gift) => (
+              <Card key={`gift-${gift.productId}`} className="border-green-200 bg-green-50/30">
+                <CardContent className="p-4 flex gap-4">
+                  <div className="w-20 h-24 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-green-100">
+                    {gift.imageUrl ? (
+                      <img
+                        src={gift.imageUrl}
+                        alt={gift.name}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <Gift className="h-8 w-8 text-green-500" />
+                    )}
+                  </div>
+
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-medium line-clamp-1 text-green-900">{gift.name}</h3>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge className="bg-green-500 hover:bg-green-600 border-none">
+                            <Gift className="h-3 w-3 mr-1" />
+                            GRÁTIS
+                          </Badge>
+                          <span className="text-xs text-green-700 font-medium hidden sm:inline">
+                            Mimo especial pra você!
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-end justify-center">
+                    <div className="flex items-center gap-2 bg-white/50 px-3 py-1 rounded-full border border-green-100">
+                      <span className="text-sm font-medium text-green-800">
+                        {gift.quantity} un
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
         {/* Summary */}
         <Card className="mb-6">

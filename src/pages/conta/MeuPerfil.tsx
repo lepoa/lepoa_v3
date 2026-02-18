@@ -17,6 +17,7 @@ import { maskCep } from "@/hooks/useCepLookup";
 interface Profile {
   name: string;
   whatsapp: string;
+  instagram_handle: string;
   preferred_sizes: string[];
   style_preferences: string;
   addressData: AddressData;
@@ -45,6 +46,7 @@ export default function MeuPerfil() {
   const [profile, setProfile] = useState<Profile>({
     name: "",
     whatsapp: "",
+    instagram_handle: "",
     preferred_sizes: [],
     style_preferences: "",
     addressData: emptyAddress,
@@ -67,7 +69,7 @@ export default function MeuPerfil() {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("name, whatsapp, preferred_sizes, style_preferences, address_line, city, state, zip_code, address_reference")
+      .select("name, whatsapp, instagram_handle, preferred_sizes, style_preferences, address_line, city, state, zip_code, address_reference")
       .eq("user_id", user.id)
       .single();
 
@@ -77,7 +79,7 @@ export default function MeuPerfil() {
       let number = "";
       let complement = "";
       let neighborhood = "";
-      
+
       if (data.address_line) {
         const parts = data.address_line.split(",").map((p: string) => p.trim());
         if (parts.length >= 1) street = parts[0];
@@ -97,6 +99,7 @@ export default function MeuPerfil() {
       setProfile({
         name: data.name || "",
         whatsapp: data.whatsapp || "",
+        instagram_handle: data.instagram_handle || "",
         preferred_sizes: data.preferred_sizes || [],
         style_preferences: data.style_preferences || "",
         addressData: {
@@ -111,7 +114,7 @@ export default function MeuPerfil() {
           document: "",
         },
       });
-      
+
       // If address is empty, show edit form
       if (!data.address_line && !data.zip_code) {
         setIsEditingAddress(true);
@@ -124,7 +127,7 @@ export default function MeuPerfil() {
     if (!user) return;
 
     setIsSaving(true);
-    
+
     // Build address_line from structured data
     const addressParts = [profile.addressData.street];
     if (profile.addressData.number) {
@@ -135,11 +138,15 @@ export default function MeuPerfil() {
     }
     const addressLine = addressParts.filter(Boolean).join(", ");
 
+    const normalizedInstagram = profile.instagram_handle
+      .replace(/@/g, "").replace(/\s/g, "").toLowerCase().trim() || null;
+
     const { error } = await supabase
       .from("profiles")
       .update({
         name: profile.name,
         whatsapp: profile.whatsapp,
+        instagram_handle: normalizedInstagram,
         preferred_sizes: profile.preferred_sizes,
         style_preferences: profile.style_preferences,
         address_line: addressLine,
@@ -194,7 +201,7 @@ export default function MeuPerfil() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container mx-auto px-4 py-8 max-w-lg">
         <h1 className="font-serif text-2xl mb-6">Meu Perfil</h1>
 
@@ -233,6 +240,18 @@ export default function MeuPerfil() {
                   onChange={(e) => setProfile((p) => ({ ...p, whatsapp: e.target.value }))}
                   placeholder="(11) 99999-9999"
                 />
+              </div>
+              <div>
+                <Label htmlFor="instagram">Instagram</Label>
+                <Input
+                  id="instagram"
+                  value={profile.instagram_handle}
+                  onChange={(e) => setProfile((p) => ({ ...p, instagram_handle: e.target.value }))}
+                  placeholder="@seuinstagram"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Preencha para ver seus pedidos de live aqui na sua conta
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -308,11 +327,10 @@ export default function MeuPerfil() {
                     <button
                       key={size}
                       onClick={() => toggleSize(size)}
-                      className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
-                        profile.preferred_sizes.includes(size)
+                      className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${profile.preferred_sizes.includes(size)
                           ? "bg-accent text-accent-foreground border-accent"
                           : "border-border hover:border-accent/50"
-                      }`}
+                        }`}
                     >
                       {size}
                     </button>

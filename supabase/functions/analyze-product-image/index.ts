@@ -22,7 +22,7 @@ async function requireAuth(req: Request): Promise<{ userId: string; error?: unde
   return { userId: data.user.id };
 }
 
-// Enums definidos para análise detalhada
+// Enums definidos para análise detalhada (mantidos para o prompt)
 const CATEGORIES = ["vestido", "blazer", "calça", "camisa", "saia", "conjunto", "short", "casaco", "macacão", "blusa", "regata", "cropped", "top", "body"];
 const COLORS = ["preto", "branco", "bege", "rosa", "azul", "verde", "vermelho", "marrom", "cinza", "amarelo", "laranja", "roxo", "vinho", "nude", "off white", "creme", "dourado", "prata", "estampado", "floral", "animal print", "listrado", "xadrez"];
 const STYLES = ["minimal", "clássico", "moderno", "romântico", "fashion", "sexy_chic", "elegante", "casual", "boho", "streetwear", "preppy", "sofisticado"];
@@ -84,32 +84,33 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Imagem muito grande (máx 10MB)" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY não configurada");
+    // ========== OPENAI KEY ==========
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY não configurada no Supabase");
     }
 
     const systemPrompt = `Você é um especialista em moda e análise de vestuário feminino brasileiro. Analise a imagem de roupa/peça fornecida e retorne um JSON DETALHADO.
 
 IMPORTANTE: Retorne APENAS o JSON válido, sem markdown, sem explicações adicionais.
 
-Campos obrigatórios:
+Campos obrigatórios e valores sugeridos (mas use o que ver na imagem com precisão):
 - categoria: UM destes: ${CATEGORIES.join(", ")}
 - cor: objeto com:
   - value: cor principal (${COLORS.join(", ")})
-  - confidence: 0 a 1
+  - confidence: 0.1 a 1.0
   - cor_secundaria: cor secundária se houver (opcional)
 - estilo: UM destes: ${STYLES.join(", ")}
-- ocasiao: UM destes: ${OCCASIONS.join(", ")}
+- ocasiao: UM destes: ${OCCASIONS.join(", ")} (seja assertivo)
 - modelagem: UM destes: ${MODELINGS.join(", ")}
 - decote: UM destes: ${NECKLINES.join(", ")}
 - manga_alca: UM destes: ${SLEEVES.join(", ")}
 - comprimento: UM destes: ${LENGTHS.join(", ")}
 - textura: UM destes (se identificável): ${TEXTURES.join(", ")}
-- tags_extras: array de 3-6 tags descritivas curtas e únicas
+- tags_extras: array de 3-6 tags descritivas curtas e únicas (ex: "botões dourados", "fenda lateral")
 - resumo_visual: frase CURTA (máx 20 palavras) descrevendo a peça de forma natural
 
-Formato de resposta:
+Exemplo de formato JSON esperado:
 {
   "categoria": { "value": "blusa", "confidence": 0.95 },
   "cor": { "value": "amarelo", "confidence": 0.9, "cor_secundaria": "dourado" },
@@ -124,64 +125,53 @@ Formato de resposta:
   "resumo_visual": "Blusa cropped amarela com alça fina e decote V, estilo minimalista elegante"
 }`;
 
-    // Prepare the image content for the API
-    let base64Data: string;
-    let mimeType = "image/jpeg";
-    
+    // Prepare the image content for the OpenAI API
+    let imageUrlContent: string;
+
     if (image_base64) {
-      if (image_base64.includes("base64,")) {
-        const parts = image_base64.split("base64,");
-        base64Data = parts[1];
-        const mimeMatch = parts[0].match(/data:([^;]+);/);
-        if (mimeMatch) mimeType = mimeMatch[1];
+      // Check if it has prefix
+      if (image_base64.startsWith("data:")) {
+        imageUrlContent = image_base64;
       } else {
-        base64Data = image_base64;
+        // Assume jpeg if raw base64
+        imageUrlContent = `data:image/jpeg;base64,${image_base64}`;
       }
     } else {
-      console.log("Fetching image from URL:", image_url);
-      try {
-        const imageResponse = await fetch(image_url!);
-        if (!imageResponse.ok) throw new Error(`Failed to fetch image: ${imageResponse.status}`);
-        const contentType = imageResponse.headers.get("content-type");
-        if (contentType) mimeType = contentType.split(";")[0].trim();
-        const arrayBuffer = await imageResponse.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
-        let binary = "";
-        for (let i = 0; i < uint8Array.length; i++) binary += String.fromCharCode(uint8Array[i]);
-        base64Data = btoa(binary);
-        console.log("Image fetched and converted, size:", uint8Array.length, "bytes, type:", mimeType);
-      } catch (fetchError) {
-        console.error("Error fetching image:", fetchError);
-        return new Response(
-          JSON.stringify({ error: "Não foi possível carregar a imagem da URL fornecida" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      imageUrlContent = image_url!;
     }
 
-    const imageContent = { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Data}` } };
+    console.log("Calling OpenAI GPT-4o-mini for image analysis...");
 
-    console.log("Calling Lovable AI for detailed image analysis...");
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "gpt-4o-mini", // Using mini for speed and cost efficiency
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: [{ type: "text", text: "Analise esta peça de roupa feminina e retorne o JSON detalhado com todos os campos solicitados." }, imageContent] }
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Analise esta peça de roupa feminina e retorne o JSON detalhado." },
+              { type: "image_url", image_url: { url: imageUrlContent, detail: "high" } }
+            ]
+          }
         ],
-        max_tokens: 1500,
+        max_tokens: 1000,
+        temperature: 0.2, // Low temperature for more deterministic JSON
+        response_format: { type: "json_object" } // Enforce JSON mode
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      if (response.status === 429) return new Response(JSON.stringify({ error: "Limite de requisições excedido." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (response.status === 402) return new Response(JSON.stringify({ error: "Créditos insuficientes." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error(`AI gateway error: ${response.status}`);
+      console.error("OpenAI API error:", response.status, errorText);
+      if (response.status === 429) return new Response(JSON.stringify({ error: "Limite de requisições excedido na OpenAI." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (response.status === 401) return new Response(JSON.stringify({ error: "Chave da OpenAI inválida." }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      throw new Error(`OpenAI API error: ${response.status}`);
     }
 
     const aiResponse = await response.json();
@@ -194,20 +184,13 @@ Formato de resposta:
 
     let analysis: DetailedAnalysisResult;
     try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON found");
-      analysis = JSON.parse(jsonMatch[0]);
-    } catch {
-      analysis = {
-        categoria: { value: null, confidence: 0 }, cor: { value: null, confidence: 0 },
-        estilo: { value: null, confidence: 0 }, ocasiao: { value: null, confidence: 0 },
-        modelagem: { value: null, confidence: 0 }, decote: { value: null, confidence: 0 },
-        manga_alca: { value: null, confidence: 0 }, comprimento: { value: null, confidence: 0 },
-        textura: { value: null, confidence: 0 }, tags_extras: [],
-        resumo_visual: "Não foi possível analisar a imagem",
-      };
+      analysis = JSON.parse(content);
+    } catch (e) {
+      console.error("Failed to parse JSON from OpenAI:", content);
+      throw new Error("IA retornou formato inválido");
     }
 
+    // Fallback for resumo_visual if missing
     if (!analysis.resumo_visual) {
       const cat = analysis.categoria?.value || "peça";
       const cor = analysis.cor?.value || "";

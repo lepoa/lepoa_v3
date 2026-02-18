@@ -29,10 +29,10 @@ export function RewardCard({
   canRedeem,
 }: RewardCardProps) {
   const Icon = rewardTypeIcons[reward.type as keyof typeof rewardTypeIcons] || Gift;
-  const tierInfo = LOYALTY_TIERS[reward.minTier];
+  const tierInfo = LOYALTY_TIERS[reward.minTier] || LOYALTY_TIERS["poa"]; // Fallback to base tier
 
   // Check if user meets tier requirement
-  const tierOrder: LoyaltyTier[] = ["poa", "classica", "icone", "poa_black"];
+  const tierOrder: LoyaltyTier[] = ["poa", "poa_gold", "poa_platinum", "poa_black"];
   const meetsTier = tierOrder.indexOf(currentTier) >= tierOrder.indexOf(reward.minTier);
   const hasEnoughPoints = currentPoints >= reward.pointsCost;
   const pointsNeeded = reward.pointsCost - currentPoints;
@@ -56,7 +56,7 @@ export function RewardCard({
         ) : (
           <Icon className="h-12 w-12 text-muted-foreground/50" />
         )}
-        
+
         {/* Tier badge if not base tier */}
         {reward.minTier !== "poa" && (
           <div className="absolute top-2 right-2">

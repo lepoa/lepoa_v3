@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { 
-  Sparkles, Star, Trophy, ArrowRight, Target, Clock, CheckCircle2, 
+import {
+  Sparkles, Star, Trophy, ArrowRight, Target, Clock, CheckCircle2,
   RotateCcw, Gift, Palette, Eye, ChevronRight, Lock
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { getLevelFromPoints, LEVEL_THRESHOLDS } from "@/lib/quizDataV2";
 import { availableMissions, getMissionTotalPoints } from "@/lib/missionsData";
+import { useLoyalty } from "@/hooks/useLoyalty";
+import { getTierFromPoints } from "@/lib/loyaltyConfig";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,8 +56,8 @@ const MeuEstilo = () => {
 
     // Redirect to login if not authenticated
     if (!user) {
-      navigate("/entrar", { 
-        state: { 
+      navigate("/entrar", {
+        state: {
           from: "/meu-estilo",
           message: "Entre ou crie sua conta para salvar seu estilo e receber sugestões no seu tamanho."
         }
@@ -69,7 +71,7 @@ const MeuEstilo = () => {
 
   const loadProfile = async () => {
     if (!user) return;
-    
+
     try {
       const { data, error } = await supabase
         .from("profiles")
@@ -83,7 +85,7 @@ const MeuEstilo = () => {
         .maybeSingle();
 
       if (error) throw error;
-      
+
       setProfile(data || {
         name: null,
         full_name: null,
@@ -109,7 +111,7 @@ const MeuEstilo = () => {
 
   const checkInProgressMission = async () => {
     if (!user) return;
-    
+
     try {
       const { data } = await supabase
         .from("mission_attempts")
@@ -129,6 +131,8 @@ const MeuEstilo = () => {
   // Check if quiz base is completed
   const hasCompletedQuiz = !!profile?.quiz_completed_at && !!profile?.style_title;
 
+  const { loyalty, getTierInfo, getProgressToNextTier, isLoading: loyaltyLoading } = useLoyalty();
+
   // If quiz not completed, redirect to quiz
   useEffect(() => {
     if (!loading && profile && !hasCompletedQuiz) {
@@ -136,7 +140,7 @@ const MeuEstilo = () => {
     }
   }, [loading, profile, hasCompletedQuiz, navigate]);
 
-  if (authLoading || loading) {
+  if (authLoading || loading || loyaltyLoading) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
@@ -151,14 +155,11 @@ const MeuEstilo = () => {
     return null; // Will redirect to quiz
   }
 
-  const { level, title: levelTitle } = getLevelFromPoints(profile.quiz_points);
-  const currentLevelThreshold = LEVEL_THRESHOLDS[level - 1] || 0;
-  const nextLevelThreshold = LEVEL_THRESHOLDS[level] || LEVEL_THRESHOLDS[LEVEL_THRESHOLDS.length - 1];
-  const pointsInCurrentLevel = profile.quiz_points - currentLevelThreshold;
-  const pointsNeededForNextLevel = nextLevelThreshold - currentLevelThreshold;
-  const progressPercent = Math.min((pointsInCurrentLevel / pointsNeededForNextLevel) * 100, 100);
-  const isMaxLevel = level >= LEVEL_THRESHOLDS.length;
-  const pointsToNextLevel = nextLevelThreshold - profile.quiz_points;
+  // Use Loyalty Data instead of legacy Profile points
+  const currentPoints = loyalty?.currentPoints || 0; // Use currentPoints (spendable) or annualPoints (status)? Usually status shown in progress.
+  const currentTier = loyalty?.currentTier || "poa";
+  const tierInfo = getTierInfo(currentTier);
+  const { progress, pointsNeeded, nextTierName } = getProgressToNextTier(loyalty?.annualPoints || 0, currentTier);
 
   const displayName = profile.full_name || profile.name || "você";
   const sizeDisplay = [profile.size_letter, profile.size_number].filter(Boolean).join(" / ");
@@ -174,7 +175,7 @@ const MeuEstilo = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container mx-auto px-4 py-6 max-w-lg">
         {/* Motivational Header */}
         <div className="text-center mb-6">
@@ -224,23 +225,23 @@ const MeuEstilo = () => {
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 bg-accent/10 px-3 py-1.5 rounded-full">
                 <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
-                <span className="font-bold text-amber-700">{profile.quiz_points} pts</span>
+                <span className="font-bold text-amber-700">{currentPoints} pts</span>
               </div>
             </div>
             <div className="text-sm text-right">
-              <span className="text-muted-foreground">Nível {level}: </span>
-              <span className="font-medium text-accent">{levelTitle}</span>
+              <span className="text-muted-foreground">Nível Atual: </span>
+              <span className="font-medium text-accent">{tierInfo.name}</span>
             </div>
           </div>
 
           {/* Progress Bar */}
-          {!isMaxLevel ? (
+          {nextTierName ? (
             <div className="mb-4">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-                <span>Progresso para Nível {level + 1}</span>
-                <span>Faltam {pointsToNextLevel} pts</span>
+                <span>Rumo ao nível {nextTierName}</span>
+                <span>Faltam {pointsNeeded} pts</span>
               </div>
-              <Progress value={progressPercent} className="h-2.5" />
+              <Progress value={progress} className="h-2.5" />
             </div>
           ) : (
             <div className="flex items-center gap-2 text-sm text-accent mb-4">
@@ -310,9 +311,9 @@ const MeuEstilo = () => {
               </h3>
               <div className="space-y-3">
                 {availableMissionsList.map((mission, index) => (
-                  <MissionCard 
-                    key={mission.id} 
-                    mission={mission} 
+                  <MissionCard
+                    key={mission.id}
+                    mission={mission}
                     isCompleted={false}
                     isInProgress={inProgressMissionId === mission.id}
                     isNextSuggested={index === 0 && !inProgressMissionId}
@@ -331,9 +332,9 @@ const MeuEstilo = () => {
               </h3>
               <div className="space-y-3">
                 {completedMissions.map((mission) => (
-                  <MissionCard 
-                    key={mission.id} 
-                    mission={mission} 
+                  <MissionCard
+                    key={mission.id}
+                    mission={mission}
                     isCompleted={true}
                   />
                 ))}
@@ -346,9 +347,9 @@ const MeuEstilo = () => {
         <div className="mt-8 pt-6 border-t border-border">
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 className="w-full text-muted-foreground hover:text-foreground gap-2"
               >
                 <RotateCcw className="h-4 w-4" />
@@ -359,7 +360,7 @@ const MeuEstilo = () => {
               <AlertDialogHeader>
                 <AlertDialogTitle>Refazer Quiz Base?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Você pode refazer o quiz para atualizar seu perfil de estilo. 
+                  Você pode refazer o quiz para atualizar seu perfil de estilo.
                   <span className="block mt-2 font-medium text-foreground">
                     Seus pontos serão mantidos — não serão somados novamente.
                   </span>
@@ -394,15 +395,14 @@ function MissionCard({ mission, isCompleted, isInProgress, isNextSuggested }: Mi
 
   return (
     <Link to={`/missao/${mission.id}`}>
-      <Card className={`transition-all hover:shadow-md ${
-        isCompleted 
-          ? "bg-muted/30 border-green-200 dark:border-green-800" 
-          : isInProgress 
-            ? "border-amber-300 bg-amber-50/50 dark:bg-amber-900/10" 
-            : isNextSuggested 
-              ? "border-accent/50 bg-accent/5" 
-              : ""
-      }`}>
+      <Card className={`transition-all hover:shadow-md ${isCompleted
+        ? "bg-muted/30 border-green-200 dark:border-green-800"
+        : isInProgress
+          ? "border-amber-300 bg-amber-50/50 dark:bg-amber-900/10"
+          : isNextSuggested
+            ? "border-accent/50 bg-accent/5"
+            : ""
+        }`}>
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <div className="text-3xl">{mission.emoji}</div>

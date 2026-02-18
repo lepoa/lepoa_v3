@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Loader2, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -585,16 +586,10 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
 
             <div>
               <Label htmlFor="price">Preço *</Label>
-              <Input
+              <MoneyInput
                 id="price"
-                type="text"
-                inputMode="decimal"
-                value={formData.price > 0 ? formData.price.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
-                onChange={(e) => {
-                  const value = e.target.value.replace(/[^\d,]/g, "").replace(",", ".");
-                  const numValue = parseFloat(value) || 0;
-                  setFormData(prev => ({ ...prev, price: numValue }));
-                }}
+                value={formData.price}
+                onChange={(value) => setFormData(prev => ({ ...prev, price: value }))}
                 placeholder="0,00"
               />
             </div>
@@ -695,19 +690,40 @@ export function ProductForm({ open, onOpenChange, product, onSuccess, userId }: 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Cor</Label>
-              <Select
-                value={formData.color || ""}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, color: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableColors.map(color => (
-                    <SelectItem key={color} value={color}>{color}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Select
+                  value={availableColors.includes(formData.color || "") ? formData.color || "" : "new_color"}
+                  onValueChange={(value) => {
+                    if (value === "new_color") {
+                      setFormData(prev => ({ ...prev, color: "" }));
+                    } else {
+                      setFormData(prev => ({ ...prev, color: value }));
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableColors.map(color => (
+                      <SelectItem key={color} value={color}>{color}</SelectItem>
+                    ))}
+                    <SelectItem value="new_color" className="font-medium text-primary">
+                      + Nova Cor...
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {(!availableColors.includes(formData.color || "") || formData.color === "") && (
+                  <Input
+                    placeholder="Digite a cor..."
+                    value={formData.color || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, color: e.target.value }))}
+                    className="mt-2 animate-in fade-in slide-in-from-top-1"
+                    autoFocus
+                  />
+                )}
+              </div>
             </div>
 
             <div>

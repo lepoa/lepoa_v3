@@ -135,15 +135,15 @@ Deno.serve(async (req) => {
     }
 
     // === URL Construction Logic (SAFE MODE) ===
-    // Fixing HTTPS valid URL for back_urls
-    const baseUrl = "https://lepoa.com.br";
+    // MUST match the deployed app URL - NOT the old lepoa.com.br site
+    const baseUrl = "https://lightcoral-cod-859891.hostingersite.com";
 
     console.log(`[create-mp-preference] Using Fixed Base URL: ${baseUrl}`);
 
     const backUrls = {
-      success: `${baseUrl}/minha-conta/pedidos/${order_id}?status=success`,
-      failure: `${baseUrl}/minha-conta/pedidos/${order_id}?status=failure`,
-      pending: `${baseUrl}/minha-conta/pedidos/${order_id}?status=pending`,
+      success: `${baseUrl}/pedido/sucesso?order_id=${order_id}`,
+      failure: `${baseUrl}/pedido/erro?order_id=${order_id}`,
+      pending: `${baseUrl}/pedido/pendente?order_id=${order_id}`,
     };
 
     const preferenceBody = {

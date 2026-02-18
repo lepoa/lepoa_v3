@@ -69,65 +69,65 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "image_url ou image_base64 é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Validate URL format if provided
     if (image_url && !image_url.startsWith("http")) {
       return new Response(JSON.stringify({ error: "image_url deve ser uma URL válida" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Validate base64 size (max ~10MB)
     if (image_base64 && image_base64.length > 15_000_000) {
       return new Response(JSON.stringify({ error: "Imagem muito grande (máx 10MB)" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada");
 
-    let base64Data: string;
-    let mimeType = "image/jpeg";
+    // Prepare image for OpenAI
+    let imageUrlContent: string;
 
     if (image_base64) {
-      if (image_base64.includes("base64,")) {
-        const parts = image_base64.split("base64,");
-        base64Data = parts[1];
-        const mimeMatch = parts[0].match(/data:([^;]+);/);
-        if (mimeMatch) mimeType = mimeMatch[1];
+      // Check if it has prefix
+      if (image_base64.startsWith("data:")) {
+        imageUrlContent = image_base64;
       } else {
-        base64Data = image_base64;
+        // Assume jpeg if raw base64
+        imageUrlContent = `data:image/jpeg;base64,${image_base64}`;
       }
     } else {
-      const imageResponse = await fetch(image_url!);
-      if (!imageResponse.ok) throw new Error(`Failed to fetch image: ${imageResponse.status}`);
-      const contentType = imageResponse.headers.get("content-type");
-      if (contentType) mimeType = contentType.split(";")[0].trim();
-      const arrayBuffer = await imageResponse.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-      let binary = "";
-      for (let i = 0; i < uint8Array.length; i++) binary += String.fromCharCode(uint8Array[i]);
-      base64Data = btoa(binary);
+      imageUrlContent = image_url!;
     }
 
-    const imageContent = { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Data}` } };
-    const userPrompt = product_name 
+    const userPrompt = product_name
       ? `Analise esta peça de roupa feminina chamada "${product_name}" e gere a descrição premium completa seguindo o formato JSON solicitado.`
       : `Analise esta peça de roupa feminina e gere a descrição premium completa seguindo o formato JSON solicitado.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "gpt-4o-mini", // Cost effective, high quality
         messages: [
           { role: "system", content: PREMIUM_COPYWRITER_PROMPT },
-          { role: "user", content: [{ type: "text", text: userPrompt }, imageContent] }
+          {
+            role: "user",
+            content: [
+              { type: "text", text: userPrompt },
+              { type: "image_url", image_url: { url: imageUrlContent, detail: "high" } }
+            ]
+          }
         ],
         max_tokens: 2000,
+        temperature: 0.7, // Higher creativity for descriptions
+        response_format: { type: "json_object" }
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      console.error("OpenAI API error:", response.status, errorText);
       if (response.status === 429) return new Response(JSON.stringify({ error: "Limite de requisições excedido." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (response.status === 402) return new Response(JSON.stringify({ error: "Créditos insuficientes." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error(`AI gateway error: ${response.status}`);
+      if (response.status === 401) return new Response(JSON.stringify({ error: "Chave da OpenAI inválida." }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      throw new Error(`OpenAI API error: ${response.status}`);
     }
 
     const aiResponse = await response.json();
@@ -136,10 +136,10 @@ serve(async (req) => {
 
     let result;
     try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON found");
-      result = JSON.parse(jsonMatch[0]);
+      result = JSON.parse(content);
     } catch {
+      console.error("Failed to parse JSON:", content);
+      // Fallback in case JSON is malformed
       return new Response(JSON.stringify({ success: true, data: { nome_produto: product_name || "Peça Le.Poá", descricao_completa: content, diferenciais: [], frase_anuncio: "", palavras_chave: [] } }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
