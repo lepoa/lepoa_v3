@@ -343,7 +343,13 @@ export function OrdersManager({ initialFilter }: OrdersManagerProps) {
       }));
 
       // 4. Merge and Sort
-      const allOrders = [...(regularOrders || []), ...mappedLiveOrders].sort(
+      const allOrders = [...(regularOrders || []), ...mappedLiveOrders].map(order => {
+        // Ensure orders from regular 'orders' table that have live_cart_id are marked as live source
+        if (order.live_cart_id && order.source !== 'live') {
+          return { ...order, source: 'live' };
+        }
+        return order;
+      }).sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
 
@@ -433,8 +439,9 @@ export function OrdersManager({ initialFilter }: OrdersManagerProps) {
     }
 
     // NEW PREVENTIVE SYNC FOR LIVE ORDERS:
-    // If it's a Live order, we MUST also update live_carts and apply effects if paid
-    if (order.source === 'live' && order.live_cart_id) {
+    // If it has a live_cart_id, we MUST update live_carts regardless of the source field
+    if (order.live_cart_id) {
+      console.log(`[Sync] Starting sync for live_cart_id: ${order.live_cart_id} to status: ${newStatus}`);
       const liveCartsUpdate: Record<string, any> = {
         operational_status: newStatus,
         updated_at: new Date().toISOString()
@@ -444,7 +451,7 @@ export function OrdersManager({ initialFilter }: OrdersManagerProps) {
       if (isPaidStatus) {
         liveCartsUpdate.status = 'pago';
         liveCartsUpdate.paid_at = updatePayload.paid_at;
-      } else if (newStatus === 'cancelado') {
+      } else if (normalizedStatus === 'cancelado') {
         liveCartsUpdate.status = 'cancelado';
       }
 
@@ -454,26 +461,29 @@ export function OrdersManager({ initialFilter }: OrdersManagerProps) {
         .eq("id", order.live_cart_id);
 
       if (liveError) {
-        console.error("Error syncing live_carts status:", liveError);
+        console.error("[Sync] Error syncing live_carts status:", liveError);
         toast.error("Status atualizado em Pedidos, mas erro ao sincronizar com Live");
+      } else {
+        console.log("[Sync] Live cart status updated successfully");
       }
 
       // If marked as paid, trigger the stock effects RPC
       if (isPaidStatus) {
         try {
+          console.log("[Sync] Triggering apply_live_cart_paid_effects RPC...");
           const { data: rpcData, error: rpcError } = await supabase.rpc('apply_live_cart_paid_effects', {
             p_live_cart_id: order.live_cart_id
           });
 
           if (rpcError) {
-            console.error("RPC Error (stock decrement):", rpcError);
+            console.error("[Sync] RPC Error (stock decrement):", rpcError);
             toast.error("Erro ao baixar estoque da Live automaticamente");
           } else {
-            console.log("Live stock effects applied:", rpcData);
+            console.log("[Sync] Live stock effects applied:", rpcData);
             toast.success("Estoque da Live atualizado!");
           }
         } catch (rpcCatch) {
-          console.error("Catching RPC error:", rpcCatch);
+          console.error("[Sync] Catching RPC error:", rpcCatch);
         }
       }
 
@@ -482,7 +492,7 @@ export function OrdersManager({ initialFilter }: OrdersManagerProps) {
         live_cart_id: order.live_cart_id,
         old_status: order.status,
         new_status: newStatus,
-        notes: `Atualizado via Gerenciador de Pedidos Geral`,
+        notes: `Atualizado via Gerenciador de Pedidos Geral (Auto-Sync)`,
       });
     }
 
