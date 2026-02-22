@@ -119,7 +119,7 @@ const PedidoPendente = () => {
 
   const getWhatsAppUrl = () => {
     const message = encodeURIComponent(
-      `Oi! Sou ${displayName}. Meu pagamento do pedido #${displayOrderId?.slice(0, 8).toUpperCase()} está pendente. Pode me ajudar? 💛`
+      `Oi! Sou ${displayName}. Tive um problema no pagamento do pedido #${displayOrderId?.slice(0, 8).toUpperCase()}. Pode me ajudar? \u{1F49B}`
     );
     return `https://wa.me/5562991223519?text=${message}`;
   };
@@ -148,7 +148,7 @@ const PedidoPendente = () => {
           <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 className="h-10 w-10 text-green-600" />
           </div>
-          <h1 className="font-serif text-2xl mb-2">Pagamento confirmado! 🎉</h1>
+          <h1 className="font-serif text-2xl mb-2">Pagamento confirmado! {"\u{1F389}"}</h1>
           <p className="text-muted-foreground mb-6">
             Seu pedido foi pago com sucesso.
           </p>

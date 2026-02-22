@@ -432,6 +432,60 @@ export function OrdersManager({ initialFilter }: OrdersManagerProps) {
       return;
     }
 
+    // NEW PREVENTIVE SYNC FOR LIVE ORDERS:
+    // If it's a Live order, we MUST also update live_carts and apply effects if paid
+    if (order.source === 'live' && order.live_cart_id) {
+      const liveCartsUpdate: Record<string, any> = {
+        operational_status: newStatus,
+        updated_at: new Date().toISOString()
+      };
+
+      // Map global status to live_carts status/paid_at if necessary
+      if (isPaidStatus) {
+        liveCartsUpdate.status = 'pago';
+        liveCartsUpdate.paid_at = updatePayload.paid_at;
+      } else if (newStatus === 'cancelado') {
+        liveCartsUpdate.status = 'cancelado';
+      }
+
+      const { error: liveError } = await supabase
+        .from("live_carts")
+        .update(liveCartsUpdate)
+        .eq("id", order.live_cart_id);
+
+      if (liveError) {
+        console.error("Error syncing live_carts status:", liveError);
+        toast.error("Status atualizado em Pedidos, mas erro ao sincronizar com Live");
+      }
+
+      // If marked as paid, trigger the stock effects RPC
+      if (isPaidStatus) {
+        try {
+          const { data: rpcData, error: rpcError } = await supabase.rpc('apply_live_cart_paid_effects', {
+            p_live_cart_id: order.live_cart_id
+          });
+
+          if (rpcError) {
+            console.error("RPC Error (stock decrement):", rpcError);
+            toast.error("Erro ao baixar estoque da Live automaticamente");
+          } else {
+            console.log("Live stock effects applied:", rpcData);
+            toast.success("Estoque da Live atualizado!");
+          }
+        } catch (rpcCatch) {
+          console.error("Catching RPC error:", rpcCatch);
+        }
+      }
+
+      // Log to live history for visibility
+      await supabase.from("live_cart_status_history").insert({
+        live_cart_id: order.live_cart_id,
+        old_status: order.status,
+        new_status: newStatus,
+        notes: `Atualizado via Gerenciador de Pedidos Geral`,
+      });
+    }
+
     // Update local state
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? {
@@ -583,7 +637,7 @@ export function OrdersManager({ initialFilter }: OrdersManagerProps) {
 
     const paymentUrl = order.mp_checkout_url || order.payment_link;
 
-    return `Olá ${order.customer_name}! 👋
+    return `Olá ${order.customer_name}! \u{1F44B}
 
 Seu pedido #${order.id.slice(0, 8).toUpperCase()} está pronto para pagamento.
 
@@ -594,7 +648,7 @@ ${itemsList}
 
 ${paymentUrl ? `*Link para pagamento:*\n${paymentUrl}` : ""}
 
-Qualquer dúvida estamos à disposição! 💕`;
+Qualquer dúvida estamos à disposição! \u{1F495}`;
   };
 
   const copyPaymentMessage = async (order: Order) => {

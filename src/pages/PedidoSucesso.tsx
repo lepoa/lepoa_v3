@@ -103,7 +103,7 @@ const PedidoSucesso = () => {
 
   const getWhatsAppUrl = () => {
     const message = encodeURIComponent(
-      `Oi! Sou ${displayName}. Acabei de fazer o pagamento do pedido #${displayOrderId?.slice(0, 8).toUpperCase()}. Total: ${formatPrice(displayTotal)}. Aguardo confirmação! 💛`
+      `Oi! Sou ${displayName}. Acabei de fazer o pagamento do pedido #${displayOrderId?.slice(0, 8).toUpperCase()}. Total: ${formatPrice(displayTotal)}. Aguardo confirmação! \u{1F49B}`
     );
     return `https://wa.me/5562991223519?text=${message}`;
   };
@@ -142,7 +142,7 @@ const PedidoSucesso = () => {
           <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
         </div>
 
-        <h1 className="font-serif text-2xl mb-2">Pagamento confirmado! 🎉</h1>
+        <h1 className="font-serif text-2xl mb-2">Pagamento confirmado! {"\u{1F389}"}</h1>
         <p className="text-muted-foreground mb-6">
           Seu pedido foi pago com sucesso. Em breve você receberá atualizações pelo WhatsApp.
         </p>

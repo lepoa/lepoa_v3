@@ -9,7 +9,7 @@ interface WhatsAppButtonProps {
   className?: string;
 }
 
-export function WhatsAppButton({ 
+export function WhatsAppButton({
   href,
   variant = "primary",
   label = "Falar no WhatsApp",
@@ -57,7 +57,7 @@ export function WhatsAppButton({
       </a>
       {showMicrocopy && (
         <p className="text-center text-xs text-muted-foreground mt-2">
-          Abrimos o WhatsApp com a mensagem pronta 💛
+          Abrimos o WhatsApp com a mensagem pronta {"\u{1F49B}"}
         </p>
       )}
     </div>

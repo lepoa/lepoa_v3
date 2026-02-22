@@ -169,10 +169,10 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
               // Show celebratory toast notification (only if not paused)
               if (!pauseRefetchRef.current) {
                 toast.success(
-                  `💰 Pagamento Confirmado!\n${customerName} pagou ${formattedTotal}`,
+                  `\u{1F4B0} Pagamento Confirmado!\n${customerName} pagou ${formattedTotal}`,
                   {
                     duration: 8000,
-                    icon: '🎉',
+                    icon: '\u{1F389}',
                     style: {
                       background: '#22c55e',
                       color: 'white',
@@ -627,7 +627,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
       await updateCartTotals(cart.id);
       await markCartForReprint(cart.id);
 
-      toast.success(`✅ Reservado para ${form.instagram_handle}!`);
+      toast.success(`\u{2705} Reservado para ${form.instagram_handle}!`);
       await fetchBackstageData();
       return true;
     } catch (err: any) {
@@ -777,7 +777,7 @@ export function useLiveBackstage(eventId: string | undefined, pauseRefetch: bool
             // Mark cart for reprint if gift was added
             await markCartForReprint(cartId);
 
-            toast.success(`🎁 Brinde aplicado: ${gift.name}`);
+            toast.success(`\u{1F381} Brinde aplicado: ${gift.name}`);
           }
         } else if (!conditionMet && alreadyApplied) {
           // Remove gift if condition no longer met (cart value reduced)

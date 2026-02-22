@@ -15,7 +15,7 @@ const PedidoErro = () => {
   const navigate = useNavigate();
   const orderId = searchParams.get("order_id");
   const liveCartId = searchParams.get("live_cart_id");
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [order, setOrder] = useState<any>(null);
   const [liveCart, setLiveCart] = useState<any>(null);
@@ -56,7 +56,7 @@ const PedidoErro = () => {
     const name = order?.customer_name || "cliente";
     const ref = displayRef || "pedido";
     const message = encodeURIComponent(
-      `Oi! Sou ${name}. Tive um problema no pagamento do pedido ${ref}. Pode me ajudar? 💛`
+      `Oi! Sou ${name}. Tive um problema no pagamento do pedido ${ref}. Pode me ajudar? \u{1F49B}`
     );
     return `https://wa.me/5562991223519?text=${message}`;
   };
@@ -85,17 +85,17 @@ const PedidoErro = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container mx-auto px-4 py-12 max-w-lg text-center">
         <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-6 animate-fade-in">
           <XCircle className="h-10 w-10 text-destructive" />
         </div>
-        
+
         <h1 className="font-serif text-2xl mb-2">Pagamento não aprovado</h1>
         <p className="text-muted-foreground mb-6">
           O Mercado Pago recusou o pagamento por motivos de segurança. Isso acontece às vezes — não se preocupe!
         </p>
-        
+
         {displayTotal > 0 && (
           <Card className="mb-6">
             <CardContent className="p-6">
@@ -140,9 +140,9 @@ const PedidoErro = () => {
             </ul>
           </CardContent>
         </Card>
-        
+
         {checkoutUrl && (
-          <Button 
+          <Button
             onClick={() => window.open(checkoutUrl, "_blank")}
             className="w-full mb-3"
             size="lg"
@@ -151,7 +151,7 @@ const PedidoErro = () => {
             Tentar pagar novamente (PIX/outro cartão)
           </Button>
         )}
-        
+
         <a
           href={getWhatsAppUrl()}
           target="_blank"
@@ -161,7 +161,7 @@ const PedidoErro = () => {
           <MessageCircle className="h-5 w-5" />
           Pedir ajuda no WhatsApp
         </a>
-        
+
         <Button variant="outline" onClick={() => navigate("/")} className="w-full">
           Voltar ao início
         </Button>

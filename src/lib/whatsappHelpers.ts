@@ -10,7 +10,7 @@ export function buildWhatsAppLink(phoneOrMessage: string, messageOrUndefined?: s
   // Backward compatibility: if only one arg, it's the message
   let phone: string;
   let message: string;
-  
+
   if (messageOrUndefined === undefined) {
     // Old signature: buildWhatsAppLink(message)
     phone = STORE_WHATSAPP_PHONE;
@@ -77,15 +77,8 @@ export function getInstagramProfileUrl(handle: string): string | null {
  */
 export function buildLepoaChargeMessage(bagLink: string, bagNumber?: number): string {
   const bagText = bagNumber ? `Sua sacola #${bagNumber} já está pronta.` : 'Sua sacola já está pronta.';
-  
-  return `Oi, tudo bem? 💛
-Aqui é da LE.POÁ. Muito obrigada por participar da nossa Live Shop.
 
-${bagText}
-Para manter tudo organizado, pedimos que finalize seu pedido pelo link abaixo:
-👉 ${bagLink}
-
-Qualquer dúvida, fico à disposição.`;
+  return `Oi, tudo bem? \u{1F49B}\nAqui é da LE.POÁ. Muito obrigada por participar da nossa Live Shop.\n\n${bagText}\nPara manter tudo organizado, pedimos que finalize seu pedido pelo link abaixo:\n\u{1F449} ${bagLink}\n\nQualquer dúvida, fico à disposição.`;
 }
 
 /**
@@ -119,7 +112,7 @@ export function buildOrderShortMessage(orderNumber: string): string {
  * Default WhatsApp message for general contact
  */
 export function buildDefaultContactMessage(): string {
-  return "Oi! Vim pelo Provador VIP e queria tirar uma dúvida 😊";
+  return "Oi! Vim pelo Provador VIP e queria tirar uma dúvida \u{1F60A}";
 }
 
 /**
@@ -128,8 +121,8 @@ export function buildDefaultContactMessage(): string {
 export function buildAddressRequestMessage(customerName?: string | null, bagNumber?: number | null): string {
   const nameGreeting = customerName ? ` ${customerName.split(' ')[0]}` : '';
   const bagText = bagNumber ? ` da sacola #${bagNumber}` : '';
-  
-  return `Olá${nameGreeting}! 📦
+
+  return `Olá${nameGreeting}! \u{1F4E6}
 
 Para enviar seu pedido${bagText}, preciso dos dados de entrega:
 
@@ -138,5 +131,5 @@ Para enviar seu pedido${bagText}, preciso dos dados de entrega:
 • Endereço completo (rua, número, complemento)
 • Telefone
 
-Pode me enviar? 😊`;
+Pode me enviar? \u{1F60A}`;
 }
